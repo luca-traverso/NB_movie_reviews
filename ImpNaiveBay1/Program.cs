@@ -22,7 +22,7 @@ using System.Threading.Tasks;
     /// 4- selects the docs for train and test datasets (from document corpus) based on 
     ///     cross-validation indicies for current iteration;
     /// 5- creates a vocabulary based on train dataset;
-    /// 6- calculates loglikelihoods and logpriors for each class using traindataset;
+    /// 6- calculates loglikelihoods and logpriors for each class using the train dataset;
     /// 7- calculates performance on test dataset. 
     /// </summary>
     class Program
