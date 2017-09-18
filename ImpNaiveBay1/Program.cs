@@ -33,6 +33,9 @@ using System.Threading.Tasks;
             Console.WriteLine("**********Implementation of Multinomial Naive Bayes**********");
             Console.WriteLine("*********Application to movie review classification**********");
             Console.WriteLine("*************************************************************");
+            Console.WriteLine("");
+            Console.WriteLine("Fold   MNB   TfIdfMNB");
+
 
             // load the whole review corpus.
             string root_dir = Directory.GetCurrentDirectory() + "\\txt_sentoken\\";
@@ -69,10 +72,14 @@ using System.Threading.Tasks;
                                                               l1[ifold], l2[ifold]);
                 // create vocabulary
                 // N.B. only use docs from train dataset
-                Dictionary<string, int> vocab = new Dictionary<string, int>();
+                Dictionary<string, double> vocab = new Dictionary<string, double>();
                 CreateVocab(xtrain, dic_stopw, vocab);
 
+                Dictionary<string, double> vocab_idf = new Dictionary<string, double>();
+                CreateVocab_idf(xtrain, dic_stopw, vocab_idf);
+
                 // calculate loglikelihoods, logprior for each class (positive and negative)
+                // standard MNB
                 var (loglp, logpp) = NBproba(vocab, dic_stopw, xtrain, ytrain, "positive");
                 var (logln, logpn) = NBproba(vocab, dic_stopw, xtrain, ytrain, "negative");
 
@@ -80,8 +87,15 @@ using System.Threading.Tasks;
                 double accuracy = TestNaiveBayes(vocab, dic_stopw, xtest, ytest, loglp,
                                                    logpp, logln, logpn);
 
-                Console.WriteLine("Accuracy for fold {0} is: {1}%", ifold, accuracy);
-                
+                // tfidf MNB
+                var (loglp_tfidf, logpp_tfidf) = NBproba_tfidf(vocab_idf, dic_stopw, xtrain, ytrain, "positive");
+                var (logln_tfidf, logpn_tfidf) = NBproba_tfidf(vocab_idf, dic_stopw, xtrain, ytrain, "negative");
+
+                double accuracy_tfidf = TestNaiveBayes_tfidf(vocab_idf, dic_stopw, xtest, ytest, loglp_tfidf,
+                                                   logpp_tfidf, logln_tfidf, logpn_tfidf);
+
+                Console.WriteLine("{0}     {1}%     {2}%", ifold, accuracy, accuracy_tfidf);
+
             }
             Console.WriteLine("Press any key to exit.");
             Console.ReadKey();
@@ -343,7 +357,7 @@ using System.Threading.Tasks;
         /// <param name="V">The vocabulary created for the current cross-validation iteration</param>
         static void CreateVocab(List<string> docs,
                                  Dictionary<string, int> stopw,
-                                 Dictionary<string, int> V)
+                                 Dictionary<string, double> V)
         {
             for(int i=0; i<docs.Count; i++)
             {
@@ -392,8 +406,9 @@ using System.Threading.Tasks;
             //return Regex.Split(str.ToLower(), @"(?i)(?<=^|\s)([a-z]+('[a-z]*)?|'[a-z]+)(?=\s|$)").Where(s => s != String.Empty).ToArray<string>();
             //return Regex.Matches(str.ToLower(), "\\w+('(s|d|t|ve|mon|ll|m|re))?").Cast<Match>().Select(x => x.Value).ToArray();
             // revised to this to allow split with _ as well
-            //
-            return Regex.Matches(str.ToLower(), "[a-zA-Z0-9]+('(s|d|t|ve|mon|ll|m|re))?").Cast<Match>().Select(x => x.Value).ToArray();
+            //return Regex.Matches(str.ToLower(), "[a-zA-Z0-9]+('(s|d|t|ve|mon|ll|m|re))?").Cast<Match>().Select(x => x.Value).ToArray();
+            // this regex is used in sci-kit learn
+            return Regex.Matches(str.ToLower(), "\\b\\w\\w+\\b").Cast<Match>().Select(x => x.Value).ToArray();
         }
 
         /// <summary>
@@ -434,14 +449,14 @@ using System.Threading.Tasks;
         /// <returns>Dictionary of class likelihoods for each token in the vocabulary,
         /// the logprior probability for the class analyzed</returns>
         public static (Dictionary<string, double>logl, double logp) NBproba(
-            Dictionary<string,int> V, Dictionary<string, int> W, List<string> X, List<int> Y, string driver)
+            Dictionary<string,double> V, Dictionary<string, int> W, List<string> X, List<int> Y, string driver)
         {
             // Xp contains docs for class analyzed
             List<string> Xp = new List<string>();
             // Dictionary of loglikelihoods to return
             Dictionary<string, double> logl = new Dictionary<string, double>();
             // Temporary dictionary
-            Dictionary<string, int> vocab_cat = new Dictionary<string, int>();
+            Dictionary<string, double> vocab_cat = new Dictionary<string, double>();
             // logprior probability to return
             double logp = 0.0;
 
@@ -455,7 +470,7 @@ using System.Threading.Tasks;
             // get total count of words in class vocabulary.
             // this is neeeded for loglikelihood calculations (first term in the denominator)
             // logl[w,c] = 1 + count(w,c in V) / (sum(count(all w,c in V) + num w in V))
-            int count_all_w = 0;
+            double count_all_w = 0;
             foreach (var pair in V)
             {
                 if (vocab_cat.ContainsKey(pair.Key))
@@ -527,11 +542,11 @@ using System.Threading.Tasks;
         /// <param name="logln">Loglikelihoods for negative class</param>
         /// <param name="logpn">Logprior probability for negative class</param>
         /// <returns>accuracy for current cross-validation iteration</returns>
-        public static double TestNaiveBayes(Dictionary<string, int> V,
-                                              Dictionary<string, int> W,
-                                              List<string> X, List<int> Y,
-                                              Dictionary<string, double> loglp, double logpp,
-                                              Dictionary<string, double> logln, double logpn)
+        public static double TestNaiveBayes(Dictionary<string, double> V,
+                                            Dictionary<string, int> W,
+                                            List<string> X, List<int> Y,
+                                            Dictionary<string, double> loglp, double logpp,
+                                            Dictionary<string, double> logln, double logpn)
         {
             // Y is only used to test the accuracy of the model!
             double accuracy = 0.0;
@@ -545,7 +560,7 @@ using System.Threading.Tasks;
                 double nprob = logpn;
 
                 // create vocab for this new review (never seen before)
-                Dictionary<string, int> vocab_test = new Dictionary<string, int>();
+                Dictionary<string, double> vocab_test = new Dictionary<string, double>();
                 string review = X[itest];
                 List<string> creview = new List<string>() { review };
                 CreateVocab(creview, W, vocab_test);
@@ -585,5 +600,315 @@ using System.Threading.Tasks;
             return accuracy;
         }
 
+        /// <summary>
+        /// Function CreateVocab_idf(). Same function as CreateVocab() but the value pair stores 
+        /// tokens idfs (inverse document frequencies). idfs are calculated in a similar manner
+        /// as in the scikit-learn library, i.e. idf = ln(N + 1 / df + 1) + 1 where N is the total
+        /// number of documents in the corpus and df is the number of documents containing the token
+        /// </summary>
+        /// <param name="docs">The document train dataset used to create the vocabulary</param>
+        /// <param name="stopw">The set of common words to remove from the vocabulary</param>
+        /// <param name="V">The vocabulary created for the current cross-validation iteration</param>
+        static void CreateVocab_idf(List<string> docs,
+                                 Dictionary<string, int> stopw,
+                                 Dictionary<string, double> V)
+        {
+
+            // dictionary that keep tracks of the count of each term
+            // in the documents corpus
+            Dictionary<string, int> count_term_in_corpus = new Dictionary<string, int>();
+
+            for (int i = 0; i < docs.Count; i++)
+            {
+                // temporary dictionary: for each review stores
+                // all tokens and gives a value of 1
+                Dictionary<string, int> tempd = new Dictionary<string, int>();
+
+                // tockenize the review
+                string[] tokens = SplitWords(docs[i]);
+
+                for (var j = 0; j < tokens.Length; j++)
+                {
+                    // update the term frequency dictionary
+                    if (!stopw.ContainsKey(tokens[j]))
+                    {
+                        // add unique tokens to temporary dictionary
+                        if (!tempd.ContainsKey(tokens[j].Trim()))
+                        {
+                            tempd.Add(tokens[j].Trim(), 1);
+                        }
+                        //else
+                        //{
+                        //    V[tokens[j].Trim()] += 1;
+                        //}
+                    }
+                }
+
+                // update count of term in the whole documents corpus 
+                foreach (var pair in tempd)
+                {
+                    if (count_term_in_corpus.ContainsKey(pair.Key))
+                    {
+                        count_term_in_corpus[pair.Key] += 1;
+                    }
+                    else
+                    {
+                        count_term_in_corpus.Add(pair.Key, 1);
+                    }
+                }
+            }
+
+            // now calculate the idfs
+            foreach (var pair in count_term_in_corpus)
+            {
+                if (!V.ContainsKey(pair.Key))
+                {
+                    V.Add(pair.Key, Math.Log((double)(docs.Count + 1) / (pair.Value + 1)) + 1);
+                }
+            }
+
+        }
+
+        /// <summary>
+        /// Function NBproba_tfidf(). Same as NBproba() but uses tfidf transformation rather 
+        /// than simple count to calculate the loglikelihoods.
+        /// </summary>
+        /// <param name="V">The vocabulary for the current cross-validation iteration</param>
+        /// <param name="W">The dictionary of common words</param>
+        /// <param name="X">The set of docs in the train dataset</param>
+        /// <param name="Y">The labels of docs in the train dataset</param>
+        /// <param name="driver">The class being analyzed (e.g. positive or negative)</param>
+        /// <returns>Dictionary of class likelihoods for each token in the vocabulary,
+        /// the logprior probability for the class analyzed</returns>
+        public static (Dictionary<string, double> logl, double logp) NBproba_tfidf(
+            Dictionary<string, double> V, Dictionary<string, int> W, List<string> X, List<int> Y, string driver)
+        {
+            // Xp contains docs for class analyzed
+            List<string> Xp = new List<string>();
+            // Dictionary of loglikelihoods to return
+            Dictionary<string, double> logl = new Dictionary<string, double>();
+            // Temporary dictionary
+            Dictionary<string, double> sum_tfidf = new Dictionary<string, double>();
+            // logprior probability to return
+            double logp = 0.0;
+
+            // first select docs for class analyzed
+            Xp = (driver.Equals("positive") ? SelectReviews(X, Y, 1) : SelectReviews(X, Y, 0));
+
+            // create a dictionary(key,sum_tfidf) based on docs for class being analyzed 
+            CalculateTfIdf(Xp, W, sum_tfidf, V);
+            //Console.WriteLine(vocab_cat.Count);
+
+            // get total count of words in class vocabulary.
+            // this is neeeded for loglikelihood calculations (first term in the denominator)
+            // logl[w,c] = 1 + count(w,c in V) / (sum(count(all w,c in V) + num w in V))
+            double count_all_w = 0;
+            foreach (var pair in V)
+            {
+                if (sum_tfidf.ContainsKey(pair.Key))
+                {
+                    // sum(count(all w,c in V)
+                    count_all_w += sum_tfidf[pair.Key];
+                }
+            }
+
+            // loop through all the tokens in the vocabulary and calculate 
+            // the loglikelihoods. 
+            foreach (var pair in V)
+            {
+                if (sum_tfidf.ContainsKey(pair.Key))
+                {
+                    // logl[w,c]
+                    logl.Add(pair.Key,
+                        Math.Log((double)(sum_tfidf[pair.Key] + 1) / (count_all_w + V.Count)));
+                }
+                else
+                {
+                    // this is necessary to take into account words that are present in the 
+                    // vocabulary but not in the vocabulary for the class analyzed 
+                    logl.Add(pair.Key,
+                        Math.Log((double)(1) / (count_all_w + V.Count)));
+                }
+            }
+
+            // calculate the logprior probability for the class analyzed 
+            logp = Math.Log((double)Xp.Count / X.Count);
+
+            // return loglikelihoods and logprior
+            return (logl, logp);
+
+        }
+
+        /// <summary>
+        /// Function CalculateTfIdf(). Calculates document term-frequency terms for the documents
+        /// provided (docs). Note that document frequencies are normalized using L2 norm for the 
+        /// document analyzed.
+        /// </summary>
+        /// <param name="docs">The docs.</param>
+        /// <param name="stopw">The stopw.</param>
+        /// <param name="calcs">The calcs.</param>
+        /// <param name="V">The v.</param>
+        static void CalculateTfIdf(List<string> docs,
+                                 Dictionary<string, int> stopw,
+                                 Dictionary<string, double> calcs,
+                                 Dictionary<string, double> V)
+        {
+            for (int i = 0; i < docs.Count; i++)
+            {
+                // temporary dictionary
+                Dictionary<string, double> tempd = new Dictionary<string, double>();
+                // temporary dictionary
+                Dictionary<string, double> tempd2 = new Dictionary<string, double>();
+
+                // tockenize the review
+                string[] tokens = SplitWords(docs[i]);
+
+                //Console.WriteLine(docs[i]);
+
+                for (var j = 0; j < tokens.Length; j++)
+                {
+                    // update the term frequency dictionary
+                    if (!stopw.ContainsKey(tokens[j]))
+                    {
+                        // add unique tokens to temporary dictionary
+                        // calculate term frequency
+                        if (!tempd.ContainsKey(tokens[j].Trim()))
+                        {
+                            tempd.Add(tokens[j].Trim(), 1);
+                        }
+                        else
+                        {
+                            tempd[tokens[j].Trim()] += 1;
+                        }
+                        
+                    }
+                }
+
+                // multiply each term count in current review by corpus idfs
+                // to get document specific tf-idf. Apply sublinear transformation to tf counts
+                // i.e 1+log(tf) [see option in scikit learn docs]
+                foreach (var pair in tempd)
+                {
+                    if (V.ContainsKey(pair.Key))
+                    {
+                        tempd2.Add(pair.Key, (1 + Math.Log(pair.Value)) * V[pair.Key]);
+                    }
+                }
+
+                // Calculate L2 norm for current review
+                double revL2norm = L2norm(tempd2);
+                //Console.WriteLine(revL2norm);
+
+                // now cumulate tfidfs for current category
+                // update count of term in the whole documents corpus 
+                foreach (var pair in tempd2)
+                {
+                    if (calcs.ContainsKey(pair.Key))
+                    {
+                        calcs[pair.Key] += (pair.Value / revL2norm);
+                        //calcs[pair.Key] += (pair.Value);
+
+                    }
+                    else
+                    {
+                        calcs.Add(pair.Key, pair.Value / revL2norm);
+                        //calcs.Add(pair.Key, pair.Value);
+                    }
+                }
+            }
+
+        }
+
+        /// <summary>
+        /// Function L2norms(). Calculates document L2 norm.
+        /// </summary>
+        /// <param name="data">The data.</param>
+        /// <returns></returns>
+        static double L2norm(Dictionary<string, double> data)
+        {
+            double val = 0.0;
+
+            // calculate L2norm of terms in current review
+            foreach (var pair in data)
+            {
+                val += Math.Pow(pair.Value, 2);
+            }
+
+            val = Math.Sqrt(val);
+
+            return val;
+        }
+
+        /// <summary>
+        /// Function TestNaiveBayes_tfidf(). Same as TestNaiveBayes() but transforms tokens from 
+        /// incoming review using tfidf rather than just using simple count. 
+        /// </summary>
+        /// <param name="V">The vocabulary for the current cross-validation iteration</param>
+        /// <param name="W">The dictionary of common words</param>
+        /// <param name="X">The set of docs in the test dataset</param>
+        /// <param name="Y">The labels of docs in the test dataset</param>
+        /// <param name="loglp">Loglikelihoods for positive class</param>
+        /// <param name="logpp">Logprior probability for positive class</param>
+        /// <param name="logln">Loglikelihoods for negative class</param>
+        /// <param name="logpn">Logprior probability for negative class</param>
+        /// <returns>accuracy for current cross-validation iteration</returns>
+        public static double TestNaiveBayes_tfidf(Dictionary<string, double> V,
+                                            Dictionary<string, int> W,
+                                            List<string> X, List<int> Y,
+                                            Dictionary<string, double> loglp, double logpp,
+                                            Dictionary<string, double> logln, double logpn)
+        {
+            // Y is only used to test the accuracy of the model!
+            double accuracy = 0.0;
+            int match = 0;
+
+            // loop through every doc in test dataset
+            for (int itest = 0; itest < X.Count; itest++)
+            {
+                // initialize posterior probabilities to priors probabilities
+                double pprob = logpp;
+                double nprob = logpn;
+
+                // create vocab for this new review (never seen before)
+                Dictionary<string, double> vocab_test = new Dictionary<string, double>();
+                string review = X[itest];
+                List<string> creview = new List<string>() { review };
+                // calculate tfidfs
+                CalculateTfIdf(creview, W, vocab_test, V);
+
+                foreach (var pair in vocab_test)
+                {
+                    // if token not present in vocabulary just discard
+                    // otherwise add likelihoods to logprior to give the 
+                    // posterior probabilities
+                    if (V.ContainsKey(pair.Key))
+                    {
+                        pprob += (pair.Value * loglp[pair.Key]);
+                        nprob += (pair.Value * logln[pair.Key]);
+                    }
+                }
+
+                //Console.WriteLine("positive: {0} and negative: {1}", pprob, nprob);
+                // calculate posterior probability - not use - keep logs, becomes too small
+                //pprob_ = Math.Exp(pprob) / (Math.Exp(pprob) + Math.Exp(nprob));
+                //nprob_ = Math.Exp(nprob) / (Math.Exp(pprob) + Math.Exp(nprob));
+
+                // if posterior probability of positive class greater than
+                // posterior probability of negative class than 1 otherwise 0
+                // (recall label 1 is positive whilst label 0 is negative)
+                int pred = (pprob > nprob ? 1 : 0);
+                // check whether prediction matches with label from test dataset.
+                match += (pred == Y[itest] ? 1 : 0);
+            }
+            //Console.WriteLine("{0} {1}", pprob_, nprob_);
+            //Console.WriteLine(match);
+
+            // Note: we are using a stratified cross-validation therefore the 
+            // classes are balanced. Accuracy = (TP + TN) / (TP + TN + FP + FN) 
+            accuracy = ((double)match / Y.Count) * 100;
+
+            // return the accuracy
+            return accuracy;
+        }
     }
 }
