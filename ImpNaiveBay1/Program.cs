@@ -406,9 +406,11 @@ using System.Threading.Tasks;
             //return Regex.Split(str.ToLower(), @"(?i)(?<=^|\s)([a-z]+('[a-z]*)?|'[a-z]+)(?=\s|$)").Where(s => s != String.Empty).ToArray<string>();
             //return Regex.Matches(str.ToLower(), "\\w+('(s|d|t|ve|mon|ll|m|re))?").Cast<Match>().Select(x => x.Value).ToArray();
             // revised to this to allow split with _ as well
-            //return Regex.Matches(str.ToLower(), "[a-zA-Z0-9]+('(s|d|t|ve|mon|ll|m|re))?").Cast<Match>().Select(x => x.Value).ToArray();
+
+            return Regex.Matches(str.ToLower(), "[a-zA-Z0-9]+('(s|d|t|ve|mon|ll|m|re))?").Cast<Match>().Select(x => x.Value).ToArray();
+            
             // this regex is used in sci-kit learn
-            return Regex.Matches(str.ToLower(), "\\b\\w\\w+\\b").Cast<Match>().Select(x => x.Value).ToArray();
+            //return Regex.Matches(str.ToLower(), "\\b\\w\\w+\\b").Cast<Match>().Select(x => x.Value).ToArray();
         }
 
         /// <summary>
