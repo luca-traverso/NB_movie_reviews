@@ -49,6 +49,12 @@ using System.Threading.Tasks;
             Dictionary<string, int> dic_stopw = new Dictionary<string, int>();
             LoadDictionary(dic_stopw, file_stopw);
 
+            // load stop-words - use the scikit-learn list of stopwords consisting of 318 
+            // common words. Dictionary enhanced with stop-words with "NOT_" prefix
+            string file_stopw_not = root_dir + "scikit_stopw_not.txt";
+            Dictionary<string, int> dic_stopw_not = new Dictionary<string, int>();
+            LoadDictionary(dic_stopw_not, file_stopw_not);
+
             // load train and test indices. These were generated with sciki-learn
             // StratifiedKFold function using 10 folds. Train/test split is 90/10. 
             // Note: We would need to implement our version of StratifiedKFold if we 
@@ -70,13 +76,12 @@ using System.Threading.Tasks;
                 // get train and test set
                 var (xtrain, xtest, ytrain, ytest) = GetSets(doc_corpus, labels,
                                                               l1[ifold], l2[ifold]);
+                
+                //**** CASE 1: MNB standard ****
                 // create vocabulary
                 // N.B. only use docs from train dataset
                 Dictionary<string, double> vocab = new Dictionary<string, double>();
                 CreateVocab(xtrain, dic_stopw, vocab);
-
-                Dictionary<string, double> vocab_idf = new Dictionary<string, double>();
-                CreateVocab_idf(xtrain, dic_stopw, vocab_idf);
 
                 // calculate loglikelihoods, logprior for each class (positive and negative)
                 // standard MNB
@@ -87,12 +92,45 @@ using System.Threading.Tasks;
                 double accuracy = TestNaiveBayes(vocab, dic_stopw, xtest, ytest, loglp,
                                                    logpp, logln, logpn);
 
+                //**** CASE 2: MNB tf-idf weights ****
+                // create vocabulary storing idfs rather than simple count 
+                Dictionary<string, double> vocab_idf = new Dictionary<string, double>();
+                CreateVocab_idf(xtrain, dic_stopw, vocab_idf);
+
                 // tfidf MNB
                 var (loglp_tfidf, logpp_tfidf) = NBproba_tfidf(vocab_idf, dic_stopw, xtrain, ytrain, "positive");
                 var (logln_tfidf, logpn_tfidf) = NBproba_tfidf(vocab_idf, dic_stopw, xtrain, ytrain, "negative");
 
                 double accuracy_tfidf = TestNaiveBayes_tfidf(vocab_idf, dic_stopw, xtest, ytest, loglp_tfidf,
                                                    logpp_tfidf, logln_tfidf, logpn_tfidf);
+
+                //**** CASE 3: MNB negation handling ****
+                // create another vocabulary but handle negation adding prefix "NOT_"
+                Dictionary<string, double> vocab_not = new Dictionary<string, double>();
+                CreateVocab(xtrain, dic_stopw_not, vocab_not, true);
+
+                // calculate loglikelihoods, logprior for each class (positive and negative)
+                // standard MNB handling negation in vocabulary
+                var (loglp_not, logpp_not) = NBproba(vocab_not, dic_stopw_not, xtrain, ytrain, "positive", neg_handle: true);
+                var (logln_not, logpn_not) = NBproba(vocab_not, dic_stopw_not, xtrain, ytrain, "negative", neg_handle: true);
+
+                // let's assess the performance of the multinomial Naive Bayes on the test dataset
+                double accuracy_not = TestNaiveBayes(vocab_not, dic_stopw_not, xtest, ytest, loglp_not,
+                                                   logpp_not, logln_not, logpn_not, neg_handle: true);
+
+                //**** CASE 4: MNB tf-idf weights and negation handling ****
+                // create vocabulary storing idfs and handling negation (prefix "NOT_") 
+                Dictionary<string, double> vocab_idf_not = new Dictionary<string, double>();
+                CreateVocab_idf(xtrain, dic_stopw_not, vocab_idf_not, true);
+
+                // calculate loglikelihoods, logprior for each class (positive and negative)
+                // MNB tf-idf weights handling negation in vocabulary
+                var (loglp_tfidf_not, logpp_tfidf_not) = NBproba_tfidf(vocab_idf_not, dic_stopw_not, xtrain, ytrain, "positive", neg_handle: true);
+                var (logln_tfidf_not, logpn_tfidf_not) = NBproba_tfidf(vocab_idf_not, dic_stopw_not, xtrain, ytrain, "negative", neg_handle: true);
+
+                // let's assess the performance of the multinomial Naive Bayes on the test dataset
+                double accuracy_tfidf_not = TestNaiveBayes_tfidf(vocab_idf_not, dic_stopw_not, xtest, ytest, loglp_tfidf_not,
+                                                   logpp_tfidf_not, logln_tfidf_not, logpn_tfidf_not, neg_handle: true);
 
                 Console.WriteLine("{0}     {1}%     {2}%", ifold, accuracy, accuracy_tfidf);
 
@@ -355,31 +393,61 @@ using System.Threading.Tasks;
         /// <param name="docs">The document train dataset used to create the vocabulary</param>
         /// <param name="stopw">The set of common words to remove from the vocabulary</param>
         /// <param name="V">The vocabulary created for the current cross-validation iteration</param>
+        /// <param name="handler">Boolean flag indicating whether negation should be handled or not</param>
         static void CreateVocab(List<string> docs,
                                  Dictionary<string, int> stopw,
-                                 Dictionary<string, double> V)
+                                 Dictionary<string, double> V,
+                                 bool handler = false)
         {
+
             for(int i=0; i<docs.Count; i++)
             {
                 // tockenize the review
+                string[] tokens = SplitWords(docs[i], handler);
 
-                string[] tokens = SplitWords(docs[i]);
+                // modify tokens if we need to handle negation
+                if (handler) { ModifyTokens(tokens); }
 
-                for (var j = 0; j < tokens.Length; j++)
+                if (!handler)
                 {
-                    // update the term frequency dictionary
-                    if (!stopw.ContainsKey(tokens[j]))
+                    for (var j = 0; j < tokens.Length; j++)
                     {
-                        // add unique tokens to temporary dictionary
-                        if (!V.ContainsKey(tokens[j].Trim()))
+                        // update the term frequency dictionary
+                        if (!stopw.ContainsKey(tokens[j]))
                         {
-                            V.Add(tokens[j].Trim(), 1);
-                        }
-                        else
-                        {
-                            V[tokens[j].Trim()] += 1;
+                            // add unique tokens to temporary dictionary
+                            if (!V.ContainsKey(tokens[j].Trim()))
+                            {
+                                V.Add(tokens[j].Trim(), 1);
+                            }
+                            else
+                            {
+                                V[tokens[j].Trim()] += 1;
+                            }
                         }
                     }
+                }
+                // need to exclude punctuation tokens which you needed to handle negation
+                else
+                {
+                    for (var j = 0; j < tokens.Length; j++)
+                    {
+                        // update the term frequency dictionary
+                        if (!stopw.ContainsKey(tokens[j]) && tokens[j] != "," && tokens[j] != "." &&
+                            tokens[j] != "!" && tokens[j] != "?" && tokens[j] != ";")
+                        {
+                            // add unique tokens to temporary dictionary
+                            if (!V.ContainsKey(tokens[j].Trim()))
+                            {
+                                V.Add(tokens[j].Trim(), 1);
+                            }
+                            else
+                            {
+                                V[tokens[j].Trim()] += 1;
+                            }
+                        }
+                    }
+
                 }
             }
         }
@@ -392,8 +460,9 @@ using System.Threading.Tasks;
         /// split into two separate tokens 
         /// </summary>
         /// <param name="str">The string to be tockenized.</param>
+        /// <param name="handler">String flag used to determine whether to handle negation or not</param>
         /// <returns>An array of text tokens</returns>
-        static string[] SplitWords(string str)
+        static string[] SplitWords(string str, bool handler)
         {
             //
             // Split on all non-word characters.
@@ -407,9 +476,19 @@ using System.Threading.Tasks;
             //return Regex.Matches(str.ToLower(), "\\w+('(s|d|t|ve|mon|ll|m|re))?").Cast<Match>().Select(x => x.Value).ToArray();
             // revised to this to allow split with _ as well
 
-            return Regex.Matches(str.ToLower(), "[a-zA-Z0-9]+('(s|d|t|ve|mon|ll|m|re))?").Cast<Match>().Select(x => x.Value).ToArray();
-            
-            // this regex is used in sci-kit learn
+            // if negation is not handled, you do not need to take care of punctuation
+            if (!handler)
+            {
+                return Regex.Matches(str.ToLower(), "[a-zA-Z0-9]+('(s|d|t|ve|mon|ll|m|re))?").Cast<Match>().Select(x => x.Value).ToArray();
+            }
+            // if negation is handled you need to take into account punctuation when splitting
+            else
+            {
+                // this regex is used for Negation_dev
+                return Regex.Matches(str.ToLower(), "[a-zA-Z0-9,.!?;]+('(s|d|t|ve|mon|ll|m|re))?").Cast<Match>().Select(x => x.Value).ToArray();
+            }
+
+            // this regex is used in sci-kit learn - used for benchmarking
             //return Regex.Matches(str.ToLower(), "\\b\\w\\w+\\b").Cast<Match>().Select(x => x.Value).ToArray();
         }
 
@@ -448,10 +527,13 @@ using System.Threading.Tasks;
         /// <param name="X">The set of docs in the train dataset</param>
         /// <param name="Y">The labels of docs in the train dataset</param>
         /// <param name="driver">The class being analyzed (e.g. positive or negative)</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
         /// <returns>Dictionary of class likelihoods for each token in the vocabulary,
         /// the logprior probability for the class analyzed</returns>
         public static (Dictionary<string, double>logl, double logp) NBproba(
-            Dictionary<string,double> V, Dictionary<string, int> W, List<string> X, List<int> Y, string driver)
+                            Dictionary<string,double> V, Dictionary<string, int> W,
+                            List<string> X, List<int> Y, string driver,
+                            bool neg_handle = false)
         {
             // Xp contains docs for class analyzed
             List<string> Xp = new List<string>();
@@ -466,7 +548,7 @@ using System.Threading.Tasks;
             Xp = (driver.Equals("positive") ? SelectReviews(X,Y,1) : SelectReviews(X,Y,0));
 
             // create a dictionary(key,count) based on docs for class being analyzed 
-            CreateVocab(Xp, W, vocab_cat);
+            CreateVocab(Xp, W, vocab_cat, neg_handle);
             //Console.WriteLine(vocab_cat.Count);
 
             // get total count of words in class vocabulary.
@@ -543,12 +625,14 @@ using System.Threading.Tasks;
         /// <param name="logpp">Logprior probability for positive class</param>
         /// <param name="logln">Loglikelihoods for negative class</param>
         /// <param name="logpn">Logprior probability for negative class</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
         /// <returns>accuracy for current cross-validation iteration</returns>
         public static double TestNaiveBayes(Dictionary<string, double> V,
                                             Dictionary<string, int> W,
                                             List<string> X, List<int> Y,
                                             Dictionary<string, double> loglp, double logpp,
-                                            Dictionary<string, double> logln, double logpn)
+                                            Dictionary<string, double> logln, double logpn,
+                                            bool neg_handle = false)
         {
             // Y is only used to test the accuracy of the model!
             double accuracy = 0.0;
@@ -565,7 +649,7 @@ using System.Threading.Tasks;
                 Dictionary<string, double> vocab_test = new Dictionary<string, double>();
                 string review = X[itest];
                 List<string> creview = new List<string>() { review };
-                CreateVocab(creview, W, vocab_test);
+                CreateVocab(creview, W, vocab_test, neg_handle);
 
                 foreach (var pair in vocab_test)
                 {
@@ -611,9 +695,11 @@ using System.Threading.Tasks;
         /// <param name="docs">The document train dataset used to create the vocabulary</param>
         /// <param name="stopw">The set of common words to remove from the vocabulary</param>
         /// <param name="V">The vocabulary created for the current cross-validation iteration</param>
+        /// <param name="handler"></param>
         static void CreateVocab_idf(List<string> docs,
                                  Dictionary<string, int> stopw,
-                                 Dictionary<string, double> V)
+                                 Dictionary<string, double> V,
+                                 bool handler = false)
         {
 
             // dictionary that keep tracks of the count of each term
@@ -627,22 +713,40 @@ using System.Threading.Tasks;
                 Dictionary<string, int> tempd = new Dictionary<string, int>();
 
                 // tockenize the review
-                string[] tokens = SplitWords(docs[i]);
+                string[] tokens = SplitWords(docs[i], handler);
 
-                for (var j = 0; j < tokens.Length; j++)
+                // modify tokens if we need to handle negation
+                if (handler) { ModifyTokens(tokens); }
+
+                if (!handler)
                 {
-                    // update the term frequency dictionary
-                    if (!stopw.ContainsKey(tokens[j]))
+                    for (var j = 0; j < tokens.Length; j++)
                     {
-                        // add unique tokens to temporary dictionary
-                        if (!tempd.ContainsKey(tokens[j].Trim()))
+                        // update the term frequency dictionary
+                        if (!stopw.ContainsKey(tokens[j]))
                         {
-                            tempd.Add(tokens[j].Trim(), 1);
+                            // add unique tokens to temporary dictionary
+                            if (!tempd.ContainsKey(tokens[j].Trim()))
+                            {
+                                tempd.Add(tokens[j].Trim(), 1);
+                            }
                         }
-                        //else
-                        //{
-                        //    V[tokens[j].Trim()] += 1;
-                        //}
+                    }
+                }
+                else
+                {
+                    for (var j = 0; j < tokens.Length; j++)
+                    {
+                        // update the term frequency dictionary
+                        if (!stopw.ContainsKey(tokens[j]) && tokens[j] != "," && tokens[j] != "." &&
+                                tokens[j] != "!" && tokens[j] != "?" && tokens[j] != ";")
+                        {
+                            // add unique tokens to temporary dictionary
+                            if (!tempd.ContainsKey(tokens[j].Trim()))
+                            {
+                                tempd.Add(tokens[j].Trim(), 1);
+                            }
+                        }
                     }
                 }
 
@@ -680,10 +784,13 @@ using System.Threading.Tasks;
         /// <param name="X">The set of docs in the train dataset</param>
         /// <param name="Y">The labels of docs in the train dataset</param>
         /// <param name="driver">The class being analyzed (e.g. positive or negative)</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
         /// <returns>Dictionary of class likelihoods for each token in the vocabulary,
         /// the logprior probability for the class analyzed</returns>
         public static (Dictionary<string, double> logl, double logp) NBproba_tfidf(
-            Dictionary<string, double> V, Dictionary<string, int> W, List<string> X, List<int> Y, string driver)
+                            Dictionary<string, double> V, Dictionary<string, int> W,
+                            List<string> X, List<int> Y, string driver,
+                            bool neg_handle = false)
         {
             // Xp contains docs for class analyzed
             List<string> Xp = new List<string>();
@@ -698,7 +805,7 @@ using System.Threading.Tasks;
             Xp = (driver.Equals("positive") ? SelectReviews(X, Y, 1) : SelectReviews(X, Y, 0));
 
             // create a dictionary(key,sum_tfidf) based on docs for class being analyzed 
-            CalculateTfIdf(Xp, W, sum_tfidf, V);
+            CalculateTfIdf(Xp, W, sum_tfidf, V, neg_handle);
             //Console.WriteLine(vocab_cat.Count);
 
             // get total count of words in class vocabulary.
@@ -750,10 +857,12 @@ using System.Threading.Tasks;
         /// <param name="stopw">The stopw.</param>
         /// <param name="calcs">The calcs.</param>
         /// <param name="V">The v.</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
         static void CalculateTfIdf(List<string> docs,
                                  Dictionary<string, int> stopw,
                                  Dictionary<string, double> calcs,
-                                 Dictionary<string, double> V)
+                                 Dictionary<string, double> V,
+                                 bool neg_handle = false)
         {
             for (int i = 0; i < docs.Count; i++)
             {
@@ -763,26 +872,55 @@ using System.Threading.Tasks;
                 Dictionary<string, double> tempd2 = new Dictionary<string, double>();
 
                 // tockenize the review
-                string[] tokens = SplitWords(docs[i]);
+                string[] tokens = SplitWords(docs[i], neg_handle);
+
+                // modify tokens if we need to handle negation
+                if (neg_handle) { ModifyTokens(tokens); }
 
                 //Console.WriteLine(docs[i]);
 
-                for (var j = 0; j < tokens.Length; j++)
+                if (!neg_handle)
                 {
-                    // update the term frequency dictionary
-                    if (!stopw.ContainsKey(tokens[j]))
+                    for (var j = 0; j < tokens.Length; j++)
                     {
-                        // add unique tokens to temporary dictionary
-                        // calculate term frequency
-                        if (!tempd.ContainsKey(tokens[j].Trim()))
+                        // update the term frequency dictionary
+                        if (!stopw.ContainsKey(tokens[j]))
                         {
-                            tempd.Add(tokens[j].Trim(), 1);
+                            // add unique tokens to temporary dictionary
+                            // calculate term frequency
+                            if (!tempd.ContainsKey(tokens[j].Trim()))
+                            {
+                                tempd.Add(tokens[j].Trim(), 1);
+                            }
+                            else
+                            {
+                                tempd[tokens[j].Trim()] += 1;
+                            }
+
                         }
-                        else
+                    }
+                }
+                // need to exclude punctuation tokens which you needed to handle negation
+                else
+                {
+                    for (var j = 0; j < tokens.Length; j++)
+                    {
+                        // update the term frequency dictionary
+                        if (!stopw.ContainsKey(tokens[j]) && tokens[j] != "," && tokens[j] != "." &&
+                            tokens[j] != "!" && tokens[j] != "?" && tokens[j] != ";")
                         {
-                            tempd[tokens[j].Trim()] += 1;
+                            // add unique tokens to temporary dictionary
+                            // calculate term frequency
+                            if (!tempd.ContainsKey(tokens[j].Trim()))
+                            {
+                                tempd.Add(tokens[j].Trim(), 1);
+                            }
+                            else
+                            {
+                                tempd[tokens[j].Trim()] += 1;
+                            }
+
                         }
-                        
                     }
                 }
 
@@ -853,12 +991,14 @@ using System.Threading.Tasks;
         /// <param name="logpp">Logprior probability for positive class</param>
         /// <param name="logln">Loglikelihoods for negative class</param>
         /// <param name="logpn">Logprior probability for negative class</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
         /// <returns>accuracy for current cross-validation iteration</returns>
         public static double TestNaiveBayes_tfidf(Dictionary<string, double> V,
                                             Dictionary<string, int> W,
                                             List<string> X, List<int> Y,
                                             Dictionary<string, double> loglp, double logpp,
-                                            Dictionary<string, double> logln, double logpn)
+                                            Dictionary<string, double> logln, double logpn,
+                                            bool neg_handle = false)
         {
             // Y is only used to test the accuracy of the model!
             double accuracy = 0.0;
@@ -876,7 +1016,7 @@ using System.Threading.Tasks;
                 string review = X[itest];
                 List<string> creview = new List<string>() { review };
                 // calculate tfidfs
-                CalculateTfIdf(creview, W, vocab_test, V);
+                CalculateTfIdf(creview, W, vocab_test, V, neg_handle);
 
                 foreach (var pair in vocab_test)
                 {
@@ -912,5 +1052,37 @@ using System.Threading.Tasks;
             // return the accuracy
             return accuracy;
         }
+
+        /// <summary>
+        /// Function ModifyTokens(). Takes an array of string tokens, probably generated by 
+        /// function SplitWords() and modifies all tokens following a negation word such as 
+        /// "n't, not, never, no" adding the prefix "NOT_" till the first punctuation token.
+        /// </summary>
+        /// <param name="tokens">String tokens to be modified.</param>
+        static void ModifyTokens(string[] tokens)
+        {
+            for (int i = 0; i < tokens.Length; i++)
+            {
+
+                if (tokens[i].Contains("n't") || tokens[i] == "no" ||
+                    tokens[i] == "never" || tokens[i] == "not")
+                {
+                    //Console.WriteLine(tokens[i]);
+
+                    i += 1;
+                    while (tokens[i] != "," && tokens[i] != "." &&
+                        tokens[i] != "!" && tokens[i] != "?" && tokens[i] != ";")
+                    {
+                        tokens[i] = "NOT_" + tokens[i];
+                        //Console.WriteLine(tokens[i]);
+                        if (i == tokens.Length - 1) { break; }
+                        i += 1;
+                    }
+                }
+                //Console.WriteLine(tokens[i]);
+            }
+
+        }
+
     }
 }
