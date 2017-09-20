@@ -34,7 +34,7 @@ using System.Threading.Tasks;
             Console.WriteLine("*********Application to movie review classification**********");
             Console.WriteLine("*************************************************************");
             Console.WriteLine("");
-            Console.WriteLine("Fold   MNB   TfIdfMNB");
+            Console.WriteLine("Fold   MNB   TfIdfMNB    MNB_not   TfIdfMNB_not");
 
 
             // load the whole review corpus.
@@ -132,7 +132,8 @@ using System.Threading.Tasks;
                 double accuracy_tfidf_not = TestNaiveBayes_tfidf(vocab_idf_not, dic_stopw_not, xtest, ytest, loglp_tfidf_not,
                                                    logpp_tfidf_not, logln_tfidf_not, logpn_tfidf_not, neg_handle: true);
 
-                Console.WriteLine("{0}     {1}%     {2}%", ifold, accuracy, accuracy_tfidf);
+                Console.WriteLine("{0}     {1:0.00}%     {2:0.00}%     {3:0.00}%     {4:0.00}%",
+                    ifold, accuracy, accuracy_tfidf, accuracy_not, accuracy_tfidf_not);
 
             }
             Console.WriteLine("Press any key to exit.");
