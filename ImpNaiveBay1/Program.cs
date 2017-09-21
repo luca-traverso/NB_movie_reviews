@@ -76,7 +76,7 @@ using System.Threading.Tasks;
                 CreateVocab(xtrain, dic_stopw, vocab);
 
                 Dictionary<string, double> vocab_idf = new Dictionary<string, double>();
-                CreateVocab_idf(xtrain, dic_stopw, vocab_idf);
+                CreateVocab_idf(xtrain, dic_stopw, vocab_idf, 5, 0.8, 10000);
 
                 // calculate loglikelihoods, logprior for each class (positive and negative)
                 // standard MNB
@@ -609,21 +609,27 @@ using System.Threading.Tasks;
         /// <param name="docs">The document train dataset used to create the vocabulary</param>
         /// <param name="stopw">The set of common words to remove from the vocabulary</param>
         /// <param name="V">The vocabulary created for the current cross-validation iteration</param>
+        /// <param name="min_df">remove the words from the vocabulary which have occurred in less than ‘min_df’ number of files</param>
+        /// <param name="max_df">remove the words from the vocabulary which have occurred in more than ‘max_df’ * total number of files in corpus</param>
+        /// <param name="max_features">choose maximum number of words to be kept in vocabulary ordered by term frequency</param>
         static void CreateVocab_idf(List<string> docs,
                                  Dictionary<string, int> stopw,
-                                 Dictionary<string, double> V)
+                                 Dictionary<string, double> V,
+                                 int min_df,
+                                 double max_df,
+                                 int max_features)
         {
 
             // dictionary that keep tracks of the count of each term
             // in the documents corpus
             Dictionary<string, int> count_term_in_corpus = new Dictionary<string, int>();
-
+            Dictionary<string, int> count_termfrequency_in_corpus = new Dictionary<string, int>();
             for (int i = 0; i < docs.Count; i++)
             {
                 // temporary dictionary: for each review stores
                 // all tokens and gives a value of 1
                 Dictionary<string, int> tempd = new Dictionary<string, int>();
-
+                Dictionary<string, int> tempfreq = new Dictionary<string, int>();
                 // tockenize the review
                 string[] tokens = SplitWords(docs[i]);
 
@@ -636,6 +642,14 @@ using System.Threading.Tasks;
                         if (!tempd.ContainsKey(tokens[j].Trim()))
                         {
                             tempd.Add(tokens[j].Trim(), 1);
+                        }
+                        if (!tempfreq.ContainsKey(tokens[j].Trim()))
+                        {
+                            tempfreq.Add(tokens[j].Trim(), 1);
+                        }
+                        else
+                        {
+                            tempfreq[tokens[j].Trim()] += 1;
                         }
                         //else
                         //{
@@ -656,8 +670,42 @@ using System.Threading.Tasks;
                         count_term_in_corpus.Add(pair.Key, 1);
                     }
                 }
-            }
 
+                foreach (var pair in tempfreq)
+                {
+                    if (count_termfrequency_in_corpus.ContainsKey(pair.Key))
+                    {
+                        count_termfrequency_in_corpus[pair.Key] += pair.Value;
+                    }
+                    else
+                    {
+                        count_termfrequency_in_corpus.Add(pair.Key, pair.Value);
+                    }
+                }
+            }
+            List<string> tokenToRemove = new List<string>();
+            foreach(var pair in count_term_in_corpus)
+            {
+                if(pair.Value <= min_df || pair.Value >= (max_df * docs.Count))
+                {
+                    tokenToRemove.Add(pair.Key);
+                }
+            }
+            foreach(var t in tokenToRemove)
+            {
+                count_term_in_corpus.Remove(t);
+                count_termfrequency_in_corpus.Remove(t);
+            }
+            tokenToRemove.Clear();
+
+            var allTokenKeys = count_termfrequency_in_corpus.Select(c => c.Key);
+            var tokenToKeep = count_termfrequency_in_corpus.OrderByDescending(c => c.Value).Take(max_features).Select(c => c.Key).ToList();
+            tokenToRemove.AddRange(allTokenKeys.Where(t=>!tokenToKeep.Contains(t)).ToList());
+
+            foreach (var t in tokenToRemove)
+            {
+                count_term_in_corpus.Remove(t);
+            }
             // now calculate the idfs
             foreach (var pair in count_term_in_corpus)
             {
