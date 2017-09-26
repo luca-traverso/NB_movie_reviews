@@ -34,7 +34,7 @@ using System.Threading.Tasks;
             Console.WriteLine("*********Application to movie review classification**********");
             Console.WriteLine("*************************************************************");
             Console.WriteLine("");
-            Console.WriteLine("Fold   MNB   TfIdfMNB");
+            Console.WriteLine("Fold   MNB-case1a   TfIdfMNB-case2a       TfIdfMNB_red-case3a");
 
 
             // load the whole review corpus.
@@ -70,13 +70,12 @@ using System.Threading.Tasks;
                 // get train and test set
                 var (xtrain, xtest, ytrain, ytest) = GetSets(doc_corpus, labels,
                                                               l1[ifold], l2[ifold]);
+
+                //**** CASE 1a: MNB standard - negation not handled ****
                 // create vocabulary
                 // N.B. only use docs from train dataset
                 Dictionary<string, double> vocab = new Dictionary<string, double>();
                 CreateVocab(xtrain, dic_stopw, vocab);
-
-                Dictionary<string, double> vocab_idf = new Dictionary<string, double>();
-                CreateVocab_idf(xtrain, dic_stopw, vocab_idf, 5, 0.8, 10000);
 
                 // calculate loglikelihoods, logprior for each class (positive and negative)
                 // standard MNB
@@ -87,6 +86,14 @@ using System.Threading.Tasks;
                 double accuracy = TestNaiveBayes(vocab, dic_stopw, xtest, ytest, loglp,
                                                    logpp, logln, logpn);
 
+                //**** CASE 1b: MNB standard - negation handled ****
+                // TO IMPLEMENT
+
+                //**** CASE 2a: MNB tf-idf weights - V not reduced, negation not handled ****
+                // create vocabulary storing idfs rather than simple count 
+                Dictionary<string, double> vocab_idf = new Dictionary<string, double>();
+                CreateVocab_idf(xtrain, dic_stopw, vocab_idf, 0, 100000, 100000);
+
                 // tfidf MNB
                 var (loglp_tfidf, logpp_tfidf) = NBproba_tfidf(vocab_idf, dic_stopw, xtrain, ytrain, "positive");
                 var (logln_tfidf, logpn_tfidf) = NBproba_tfidf(vocab_idf, dic_stopw, xtrain, ytrain, "negative");
@@ -94,7 +101,27 @@ using System.Threading.Tasks;
                 double accuracy_tfidf = TestNaiveBayes_tfidf(vocab_idf, dic_stopw, xtest, ytest, loglp_tfidf,
                                                    logpp_tfidf, logln_tfidf, logpn_tfidf);
 
-                Console.WriteLine("{0}     {1}%     {2}%", ifold, accuracy, accuracy_tfidf);
+                //**** CASE 2b: MNB tf-idf weights - V not reduced, negation handled ****
+                // TO IMPLEMENT
+
+                //**** CASE 3a: MNB tf-idf weights - V reduced, negation not handled ****
+                Dictionary<string, double> vocab_idf_red = new Dictionary<string, double>();
+                CreateVocab_idf(xtrain, dic_stopw, vocab_idf_red, 5, 0.8, 10000);
+
+                // tfidf MNB
+                var (loglp_tfidf_red, logpp_tfidf_red) = NBproba_tfidf(vocab_idf_red, dic_stopw,
+                                                                            xtrain, ytrain, "positive");
+                var (logln_tfidf_red, logpn_tfidf_red) = NBproba_tfidf(vocab_idf_red, dic_stopw,
+                                                                            xtrain, ytrain, "negative");
+
+                double accuracy_tfidf_red = TestNaiveBayes_tfidf(vocab_idf_red, dic_stopw, xtest, ytest, loglp_tfidf_red,
+                                                   logpp_tfidf_red, logln_tfidf_red, logpn_tfidf_red);
+
+                //**** CASE 3b: MNB tf-idf weights - V reduced, negation handled ****
+
+
+                Console.WriteLine("{0}     {1:0.00}%      {2:0.00}%       {3:0.00}%",
+                                        ifold, accuracy, accuracy_tfidf, accuracy_tfidf_red);
 
             }
             Console.WriteLine("Press any key to exit.");
