@@ -87,9 +87,9 @@ using System.Threading.Tasks;
                                                    logpp, logln, logpn);
 
                 //**** CASE 1b: MNB standard - negation handled ****
-                                // create another vocabulary but handle negation adding prefix "NOT_"
+                // create another vocabulary but handle negation adding prefix "NOT_"
                 Dictionary<string, double> vocab_not = new Dictionary<string, double>();
-                CreateVocab(xtrain, dic_stopw, vocab_not, true);
+                CreateVocab(xtrain, dic_stopw, vocab_not, neg_handle: true);
 
                 // calculate loglikelihoods, logprior for each class (positive and negative)
                 // standard MNB handling negation in vocabulary
@@ -102,9 +102,10 @@ using System.Threading.Tasks;
                 double accuracy_not = TestNaiveBayes(vocab_not, dic_stopw, xtest, ytest, loglp_not,
                                                    logpp_not, logln_not, logpn_not, neg_handle: true);
 
-
                 //**** CASE 2a: MNB tf-idf weights - V not reduced, negation not handled ****
-                // create vocabulary storing idfs rather than simple count 
+                // create vocabulary storing idfs rather than simple count
+                // do not reduce vocabulary: use min_df=0, max_df and max_features to a
+                // very large value.
                 Dictionary<string, double> vocab_idf = new Dictionary<string, double>();
                 CreateVocab_idf(xtrain, dic_stopw, vocab_idf, 0, 100000, 100000);
 
@@ -116,7 +117,8 @@ using System.Threading.Tasks;
                                                    logpp_tfidf, logln_tfidf, logpn_tfidf);
 
                 //**** CASE 2b: MNB tf-idf weights - V not reduced, negation handled ****
-                // TO IMPLEMENT
+                Dictionary<string, double> vocab_idf_neg = new Dictionary<string, double>();
+                CreateVocab_idf(xtrain, dic_stopw, vocab_idf, 0, 100000, 100000, neg_handle: true);
 
                 //**** CASE 3a: MNB tf-idf weights - V reduced, negation not handled ****
                 Dictionary<string, double> vocab_idf_red = new Dictionary<string, double>();
@@ -134,7 +136,7 @@ using System.Threading.Tasks;
                 //**** CASE 3b: MNB tf-idf weights - V reduced, negation handled ****
 
 
-                Console.WriteLine("{0}     {1:0.00}%      {2:0.00}%       {3:0.00}%       {4:0.00}%",
+                Console.WriteLine("{0}           {1:0.00}%          {2:0.00}%               {3:0.00}%                {4:0.00}%",
                                         ifold, accuracy, accuracy_not, accuracy_tfidf, accuracy_tfidf_red);
 
             }
@@ -396,22 +398,22 @@ using System.Threading.Tasks;
         /// <param name="docs">The document train dataset used to create the vocabulary</param>
         /// <param name="stopw">The set of common words to remove from the vocabulary</param>
         /// <param name="V">The vocabulary created for the current cross-validation iteration</param>
-        /// <param name="handler">Boolean flag indicating whether negation should be handled or not</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
         static void CreateVocab(List<string> docs,
                                  Dictionary<string, int> stopw,
                                  Dictionary<string, double> V,
-                                 bool handler = false)
+                                 bool neg_handle = false)
         {
             for (int i = 0; i < docs.Count; i++)
             {
                 // tockenize the review
 
-                string[] tokens = SplitWords(docs[i], handler);
+                string[] tokens = SplitWords(docs[i], neg_handle);
 
                 // modify tokens if we need to handle negation
-                if (handler) { ModifyTokens(tokens); }
+                if (neg_handle) { ModifyTokens(tokens); }
 
-                if (!handler)
+                if (!neg_handle)
                 {
                     for (var j = 0; j < tokens.Length; j++)
                     {
@@ -700,14 +702,14 @@ using System.Threading.Tasks;
         /// <param name="min_df">remove the words from the vocabulary which have occurred in less than ‘min_df’ number of files</param>
         /// <param name="max_df">remove the words from the vocabulary which have occurred in more than ‘max_df’ * total number of files in corpus</param>
         /// <param name="max_features">choose maximum number of words to be kept in vocabulary ordered by term frequency</param>
-        /// <param name="handler">Boolean flag indicating whether negation should be handled or not</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
         static void CreateVocab_idf(List<string> docs,
                                  Dictionary<string, int> stopw,
                                  Dictionary<string, double> V,
                                  int min_df,
                                  double max_df,
                                  int max_features,
-                                 bool handler = false)
+                                 bool neg_handle = false)
         {
 
             // dictionary that keep tracks of the count of each term
@@ -720,31 +722,63 @@ using System.Threading.Tasks;
                 // all tokens and gives a value of 1
                 Dictionary<string, int> tempd = new Dictionary<string, int>();
                 Dictionary<string, int> tempfreq = new Dictionary<string, int>();
+                
                 // tockenize the review
-                string[] tokens = SplitWords(docs[i], handler);
+                string[] tokens = SplitWords(docs[i], neg_handle);
 
-                for (var j = 0; j < tokens.Length; j++)
+                // modify tokens if we need to handle negation
+                if (neg_handle) { ModifyTokens(tokens); }
+
+                if (!neg_handle)
                 {
-                    // update the term frequency dictionary
-                    if (!stopw.ContainsKey(tokens[j]))
+                    for (var j = 0; j < tokens.Length; j++)
                     {
-                        // add unique tokens to temporary dictionary
-                        if (!tempd.ContainsKey(tokens[j].Trim()))
+                        // update the term frequency dictionary
+                        if (!stopw.ContainsKey(tokens[j]))
                         {
-                            tempd.Add(tokens[j].Trim(), 1);
+                            // add unique tokens to temporary dictionary
+                            if (!tempd.ContainsKey(tokens[j].Trim()))
+                            {
+                                tempd.Add(tokens[j].Trim(), 1);
+                            }
+                            if (!tempfreq.ContainsKey(tokens[j].Trim()))
+                            {
+                                tempfreq.Add(tokens[j].Trim(), 1);
+                            }
+                            else
+                            {
+                                tempfreq[tokens[j].Trim()] += 1;
+                            }
                         }
-                        if (!tempfreq.ContainsKey(tokens[j].Trim()))
+                    }
+                }
+                // need to exclude punctuation tokens which you needed to handle negation
+                else
+                {
+                    for (var j = 0; j < tokens.Length; j++)
+                    {
+                        // update the term frequency dictionary
+                        if (!stopw.ContainsKey(tokens[j]) && tokens[j] != "," && tokens[j] != "." &&
+                                tokens[j] != "!" && tokens[j] != "?" && tokens[j] != ";")
                         {
-                            tempfreq.Add(tokens[j].Trim(), 1);
+                            // update the term frequency dictionary
+                            if (!stopw.ContainsKey(tokens[j]))
+                            {
+                                // add unique tokens to temporary dictionary
+                                if (!tempd.ContainsKey(tokens[j].Trim()))
+                                {
+                                    tempd.Add(tokens[j].Trim(), 1);
+                                }
+                                if (!tempfreq.ContainsKey(tokens[j].Trim()))
+                                {
+                                    tempfreq.Add(tokens[j].Trim(), 1);
+                                }
+                                else
+                                {
+                                    tempfreq[tokens[j].Trim()] += 1;
+                                }
+                            }
                         }
-                        else
-                        {
-                            tempfreq[tokens[j].Trim()] += 1;
-                        }
-                        //else
-                        //{
-                        //    V[tokens[j].Trim()] += 1;
-                        //}
                     }
                 }
 
