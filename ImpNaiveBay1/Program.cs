@@ -34,7 +34,7 @@ using System.Threading.Tasks;
             Console.WriteLine("*********Application to movie review classification**********");
             Console.WriteLine("*************************************************************");
             Console.WriteLine("");
-            Console.WriteLine("Fold   MNB[case1a]     MNB[case1b]     TfIdfMNB[case2a]      TfIdfMNB[case3a]");
+            Console.WriteLine("Fold   MNB[case1a]     MNB[case1b]     TfIdfMNB[case2a]      TfIdfMNB[case2b]      TfIdfMNB[case3a]      TfIdfMNB[case3b]");
 
 
             // load the whole review corpus.
@@ -117,14 +117,25 @@ using System.Threading.Tasks;
                                                    logpp_tfidf, logln_tfidf, logpn_tfidf);
 
                 //**** CASE 2b: MNB tf-idf weights - V not reduced, negation handled ****
+                // create another vocabulary but handle negation adding prefix "NOT_"
                 Dictionary<string, double> vocab_idf_neg = new Dictionary<string, double>();
-                CreateVocab_idf(xtrain, dic_stopw, vocab_idf, 0, 100000, 100000, neg_handle: true);
+                CreateVocab_idf(xtrain, dic_stopw, vocab_idf_neg, 0, 100000, 100000, neg_handle: true);
+
+                // calculate loglikelihoods, logprior for each class (positive and negative)
+                // tfidf MNB handling negation in vocabulary
+                var (loglp_tfidf_neg, logpp_tfidf_neg) = NBproba_tfidf(vocab_idf_neg, dic_stopw, xtrain,
+                                                                    ytrain, "positive", neg_handle: true);
+                var (logln_tfidf_neg, logpn_tfidf_neg) = NBproba_tfidf(vocab_idf_neg, dic_stopw, xtrain,
+                                                                    ytrain, "negative", neg_handle: true);
+
+                double accuracy_tfidf_neg = TestNaiveBayes_tfidf(vocab_idf_neg, dic_stopw, xtest, ytest, loglp_tfidf_neg,
+                                                   logpp_tfidf_neg, logln_tfidf_neg, logpn_tfidf_neg, neg_handle: true);
 
                 //**** CASE 3a: MNB tf-idf weights - V reduced, negation not handled ****
                 Dictionary<string, double> vocab_idf_red = new Dictionary<string, double>();
                 CreateVocab_idf(xtrain, dic_stopw, vocab_idf_red, 5, 0.8, 10000);
 
-                // tfidf MNB
+                // tfidf MNB with Vocabulary reduced
                 var (loglp_tfidf_red, logpp_tfidf_red) = NBproba_tfidf(vocab_idf_red, dic_stopw,
                                                                             xtrain, ytrain, "positive");
                 var (logln_tfidf_red, logpn_tfidf_red) = NBproba_tfidf(vocab_idf_red, dic_stopw,
@@ -134,10 +145,21 @@ using System.Threading.Tasks;
                                                    logpp_tfidf_red, logln_tfidf_red, logpn_tfidf_red);
 
                 //**** CASE 3b: MNB tf-idf weights - V reduced, negation handled ****
+                Dictionary<string, double> vocab_idf_red_neg = new Dictionary<string, double>();
+                CreateVocab_idf(xtrain, dic_stopw, vocab_idf_red_neg, 5, 0.8, 10000, neg_handle: true);
 
+                // tfidf MNB with Vocabulary reduced and negation handled
+                var (loglp_tfidf_red_neg, logpp_tfidf_red_neg) = NBproba_tfidf(vocab_idf_red_neg, dic_stopw,
+                                                                            xtrain, ytrain, "positive", neg_handle:true);
+                var (logln_tfidf_red_neg, logpn_tfidf_red_neg) = NBproba_tfidf(vocab_idf_red_neg, dic_stopw,
+                                                                            xtrain, ytrain, "negative", neg_handle:true);
 
-                Console.WriteLine("{0}           {1:0.00}%          {2:0.00}%               {3:0.00}%                {4:0.00}%",
-                                        ifold, accuracy, accuracy_not, accuracy_tfidf, accuracy_tfidf_red);
+                double accuracy_tfidf_red_neg = TestNaiveBayes_tfidf(vocab_idf_red_neg, dic_stopw, xtest, ytest,
+                                                    loglp_tfidf_red_neg, logpp_tfidf_red_neg, logln_tfidf_red_neg,
+                                                    logpn_tfidf_red_neg, neg_handle:true);
+
+                Console.WriteLine("{0}           {1:0.00}%          {2:0.00}%               {3:0.00}%                {4:0.00}%                {5:0.00}%                {6:0.00}%",
+                                        ifold, accuracy, accuracy_not, accuracy_tfidf, accuracy_tfidf_neg, accuracy_tfidf_red, accuracy_tfidf_red_neg);
 
             }
             Console.WriteLine("Press any key to exit.");
@@ -850,10 +872,13 @@ using System.Threading.Tasks;
         /// <param name="X">The set of docs in the train dataset</param>
         /// <param name="Y">The labels of docs in the train dataset</param>
         /// <param name="driver">The class being analyzed (e.g. positive or negative)</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
         /// <returns>Dictionary of class likelihoods for each token in the vocabulary,
         /// the logprior probability for the class analyzed</returns>
         public static (Dictionary<string, double> logl, double logp) NBproba_tfidf(
-            Dictionary<string, double> V, Dictionary<string, int> W, List<string> X, List<int> Y, string driver)
+                            Dictionary<string, double> V, Dictionary<string, int> W,
+                            List<string> X, List<int> Y, string driver,
+                            bool neg_handle = false)
         {
             // Xp contains docs for class analyzed
             List<string> Xp = new List<string>();
@@ -868,7 +893,7 @@ using System.Threading.Tasks;
             Xp = (driver.Equals("positive") ? SelectReviews(X, Y, 1) : SelectReviews(X, Y, 0));
 
             // create a dictionary(key,sum_tfidf) based on docs for class being analyzed 
-            CalculateTfIdf(Xp, W, sum_tfidf, V);
+            CalculateTfIdf(Xp, W, sum_tfidf, V, neg_handle);
             //Console.WriteLine(vocab_cat.Count);
 
             // get total count of words in class vocabulary.
@@ -920,12 +945,12 @@ using System.Threading.Tasks;
         /// <param name="stopw">The stopw.</param>
         /// <param name="calcs">The calcs.</param>
         /// <param name="V">The v.</param>
-        /// <param name="handler">Boolean flag indicating whether negation should be handled or not</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
         static void CalculateTfIdf(List<string> docs,
                                  Dictionary<string, int> stopw,
                                  Dictionary<string, double> calcs,
                                  Dictionary<string, double> V,
-                                 bool handler = false)
+                                 bool neg_handle = false)
         {
             for (int i = 0; i < docs.Count; i++)
             {
@@ -935,26 +960,54 @@ using System.Threading.Tasks;
                 Dictionary<string, double> tempd2 = new Dictionary<string, double>();
 
                 // tockenize the review
-                string[] tokens = SplitWords(docs[i], handler);
+                string[] tokens = SplitWords(docs[i], neg_handle);
+
+                // modify tokens if we need to handle negation
+                if (neg_handle) { ModifyTokens(tokens); }
 
                 //Console.WriteLine(docs[i]);
-
-                for (var j = 0; j < tokens.Length; j++)
+                if (!neg_handle)
                 {
-                    // update the term frequency dictionary
-                    if (!stopw.ContainsKey(tokens[j]))
+                    for (var j = 0; j < tokens.Length; j++)
                     {
-                        // add unique tokens to temporary dictionary
-                        // calculate term frequency
-                        if (!tempd.ContainsKey(tokens[j].Trim()))
+                        // update the term frequency dictionary
+                        if (!stopw.ContainsKey(tokens[j]))
                         {
-                            tempd.Add(tokens[j].Trim(), 1);
+                            // add unique tokens to temporary dictionary
+                            // calculate term frequency
+                            if (!tempd.ContainsKey(tokens[j].Trim()))
+                            {
+                                tempd.Add(tokens[j].Trim(), 1);
+                            }
+                            else
+                            {
+                                tempd[tokens[j].Trim()] += 1;
+                            }
+
                         }
-                        else
+                    }
+                }
+                // need to exclude punctuation tokens which you needed to handle negation
+                else
+                {
+                    for (var j = 0; j < tokens.Length; j++)
+                    {
+                        // update the term frequency dictionary
+                        if (!stopw.ContainsKey(tokens[j]) && tokens[j] != "," && tokens[j] != "." &&
+                            tokens[j] != "!" && tokens[j] != "?" && tokens[j] != ";")
                         {
-                            tempd[tokens[j].Trim()] += 1;
+                            // add unique tokens to temporary dictionary
+                            // calculate term frequency
+                            if (!tempd.ContainsKey(tokens[j].Trim()))
+                            {
+                                tempd.Add(tokens[j].Trim(), 1);
+                            }
+                            else
+                            {
+                                tempd[tokens[j].Trim()] += 1;
+                            }
+
                         }
-                        
                     }
                 }
 
@@ -1025,12 +1078,14 @@ using System.Threading.Tasks;
         /// <param name="logpp">Logprior probability for positive class</param>
         /// <param name="logln">Loglikelihoods for negative class</param>
         /// <param name="logpn">Logprior probability for negative class</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
         /// <returns>accuracy for current cross-validation iteration</returns>
         public static double TestNaiveBayes_tfidf(Dictionary<string, double> V,
                                             Dictionary<string, int> W,
                                             List<string> X, List<int> Y,
                                             Dictionary<string, double> loglp, double logpp,
-                                            Dictionary<string, double> logln, double logpn)
+                                            Dictionary<string, double> logln, double logpn,
+                                            bool neg_handle = false)
         {
             // Y is only used to test the accuracy of the model!
             double accuracy = 0.0;
@@ -1048,7 +1103,7 @@ using System.Threading.Tasks;
                 string review = X[itest];
                 List<string> creview = new List<string>() { review };
                 // calculate tfidfs
-                CalculateTfIdf(creview, W, vocab_test, V);
+                CalculateTfIdf(creview, W, vocab_test, V, neg_handle);
 
                 foreach (var pair in vocab_test)
                 {
