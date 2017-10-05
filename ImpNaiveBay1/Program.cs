@@ -45,7 +45,7 @@ using System.Threading.Tasks;
 
             // load stop-words - use the scikit-learn list of stopwords consisting of 318 
             // common words.
-            string file_stopw = root_dir + "scikit_stopw_not.txt";
+            string file_stopw = root_dir + "scikit_stopw.txt"; //previously was scikit_stopw_not.txt
             Dictionary<string, int> dic_stopw = new Dictionary<string, int>();
             LoadDictionary(dic_stopw, file_stopw);
 
@@ -85,6 +85,8 @@ using System.Threading.Tasks;
                 // let's assess the performance of the multinomial Naive Bayes on the test dataset
                 double accuracy = TestNaiveBayes(vocab, dic_stopw, xtest, ytest, loglp,
                                                    logpp, logln, logpn);
+                double[] case1a = TestNaiveBayes_metrics(vocab, dic_stopw, xtest, ytest, loglp,
+                                   logpp, logln, logpn);
 
                 //**** CASE 1b: MNB standard - negation handled ****
                 // create another vocabulary but handle negation adding prefix "NOT_"
@@ -101,6 +103,8 @@ using System.Threading.Tasks;
                 // let's assess the performance of the multinomial Naive Bayes on the test dataset
                 double accuracy_not = TestNaiveBayes(vocab_not, dic_stopw, xtest, ytest, loglp_not,
                                                    logpp_not, logln_not, logpn_not, neg_handle: true);
+                double[] accuracy_not_case1b = TestNaiveBayes_metrics(vocab_not, dic_stopw, xtest, ytest, loglp_not,
+                                   logpp_not, logln_not, logpn_not, neg_handle: true);
 
                 //**** CASE 2a: MNB tf-idf weights - V not reduced, negation not handled ****
                 // create vocabulary storing idfs rather than simple count
@@ -108,12 +112,14 @@ using System.Threading.Tasks;
                 // very large value.
                 Dictionary<string, double> vocab_idf = new Dictionary<string, double>();
                 CreateVocab_idf(xtrain, dic_stopw, vocab_idf, 0, 100000, 100000);
-
+                
                 // tfidf MNB
                 var (loglp_tfidf, logpp_tfidf) = NBproba_tfidf(vocab_idf, dic_stopw, xtrain, ytrain, "positive");
                 var (logln_tfidf, logpn_tfidf) = NBproba_tfidf(vocab_idf, dic_stopw, xtrain, ytrain, "negative");
 
                 double accuracy_tfidf = TestNaiveBayes_tfidf(vocab_idf, dic_stopw, xtest, ytest, loglp_tfidf,
+                                                   logpp_tfidf, logln_tfidf, logpn_tfidf);
+                double[] accuracy_tfidf_case2a = TestNaiveBayes_tfidf_metrics(vocab_idf, dic_stopw, xtest, ytest, loglp_tfidf,
                                                    logpp_tfidf, logln_tfidf, logpn_tfidf);
 
                 //**** CASE 2b: MNB tf-idf weights - V not reduced, negation handled ****
@@ -130,6 +136,8 @@ using System.Threading.Tasks;
 
                 double accuracy_tfidf_neg = TestNaiveBayes_tfidf(vocab_idf_neg, dic_stopw, xtest, ytest, loglp_tfidf_neg,
                                                    logpp_tfidf_neg, logln_tfidf_neg, logpn_tfidf_neg, neg_handle: true);
+                double[] accuracy_tfidf_neg_case2b = TestNaiveBayes_tfidf_metrics(vocab_idf_neg, dic_stopw, xtest, ytest, loglp_tfidf_neg,
+                                   logpp_tfidf_neg, logln_tfidf_neg, logpn_tfidf_neg, neg_handle: true);
 
                 //**** CASE 3a: MNB tf-idf weights - V reduced, negation not handled ****
                 Dictionary<string, double> vocab_idf_red = new Dictionary<string, double>();
@@ -142,6 +150,8 @@ using System.Threading.Tasks;
                                                                             xtrain, ytrain, "negative");
 
                 double accuracy_tfidf_red = TestNaiveBayes_tfidf(vocab_idf_red, dic_stopw, xtest, ytest, loglp_tfidf_red,
+                                                   logpp_tfidf_red, logln_tfidf_red, logpn_tfidf_red);
+                double[] accuracy_tfidf_red_case3a = TestNaiveBayes_tfidf_metrics(vocab_idf_red, dic_stopw, xtest, ytest, loglp_tfidf_red,
                                                    logpp_tfidf_red, logln_tfidf_red, logpn_tfidf_red);
 
                 //**** CASE 3b: MNB tf-idf weights - V reduced, negation handled ****
@@ -157,10 +167,26 @@ using System.Threading.Tasks;
                 double accuracy_tfidf_red_neg = TestNaiveBayes_tfidf(vocab_idf_red_neg, dic_stopw, xtest, ytest,
                                                     loglp_tfidf_red_neg, logpp_tfidf_red_neg, logln_tfidf_red_neg,
                                                     logpn_tfidf_red_neg, neg_handle:true);
+                double[] accuracy_tfidf_red_neg_case3b = TestNaiveBayes_tfidf_metrics(vocab_idf_red_neg, dic_stopw, xtest, ytest,
+                                                    loglp_tfidf_red_neg, logpp_tfidf_red_neg, logln_tfidf_red_neg,
+                                                    logpn_tfidf_red_neg, neg_handle: true);
 
                 Console.WriteLine("{0}           {1:0.00}%          {2:0.00}%               {3:0.00}%                {4:0.00}%                {5:0.00}%                {6:0.00}%",
                                         ifold, accuracy, accuracy_not, accuracy_tfidf, accuracy_tfidf_neg, accuracy_tfidf_red, accuracy_tfidf_red_neg);
-
+                //metrics[0] is accuracy, metrics[1] is precision, metrics[2] is recall, metrics[3] is the F-measure
+                Console.WriteLine("Case1a: Accuracy: {0:0.00}%   Precision: {1:0.00}%    Recall: {2:0.00}%   F-measure: {3:0.00}%", 
+                        case1a[0], case1a[1], case1a[2], case1a[3]);
+                Console.WriteLine("Case1b: Accuracy: {0:0.00}%   Precision: {1:0.00}%    Recall: {2:0.00}%   F-measure: {3:0.00}%", 
+                        accuracy_not_case1b[0], accuracy_not_case1b[1], accuracy_not_case1b[2], accuracy_not_case1b[3]);
+                Console.WriteLine("Case2a: Accuracy: {0:0.00}%   Precision: {1:0.00}%    Recall: {2:0.00}%   F-measure: {3:0.00}%", 
+                        accuracy_tfidf_case2a[0], accuracy_tfidf_case2a[1], accuracy_tfidf_case2a[2], accuracy_tfidf_case2a[3]);
+                Console.WriteLine("Case2b: Accuracy: {0:0.00}%   Precision: {1:0.00}%    Recall: {2:0.00}%   F-measure: {3:0.00}%", 
+                        accuracy_tfidf_neg_case2b[0], accuracy_tfidf_neg_case2b[1], accuracy_tfidf_neg_case2b[2], accuracy_tfidf_neg_case2b[3]);
+                Console.WriteLine("Case3a: Accuracy: {0:0.00}%   Precision: {1:0.00}%    Recall: {2:0.00}%   F-measure: {3:0.00}%", 
+                        accuracy_tfidf_red_case3a[0], accuracy_tfidf_red_case3a[1], accuracy_tfidf_red_case3a[2], accuracy_tfidf_red_case3a[3]);
+                Console.WriteLine("Case3b: Accuracy: {0:0.00}%   Precision: {1:0.00}%    Recall: {2:0.00}%   F-measure: {3:0.00}%", 
+                        accuracy_tfidf_red_neg_case3b[0], accuracy_tfidf_red_neg_case3b[1], accuracy_tfidf_red_neg_case3b[2], accuracy_tfidf_red_neg_case3b[3]);
+                Console.WriteLine("\n");
             }
             Console.WriteLine("Press any key to exit.");
             Console.ReadKey();
@@ -713,6 +739,148 @@ using System.Threading.Tasks;
         }
 
         /// <summary>
+        /// Function Tally(). Determines whether a prediction is a true negative, true positive,
+        /// false positive, or false negative and appropriately increases the tally. Returns the 
+        /// current tally of true positives, true negatives, false positives, and false negatives.
+        /// currentTally = [TP, FP, FN, TN]
+        /// </summary>
+        /// <param name="currentTally">Current number of occurrences of true positives, true negatives, 
+        /// false positives, and false negatives.</param>
+        /// <param name="prediction">The predicted class label. 1 for a positive prediction. o for a negative prediction.</param>
+        /// <param name="actual">The actual class label. 1 for a positive prediction. o for a negative prediction.</param>
+        /// <returns>Returns an updated tally.</returns>
+        public static double[] Tally(double[] currentTally, int prediction, int actual)
+        {
+            //if (pred == 1 && Y[itest] == 1, TP) or  (pred == 1 && Y[itest] == 0, FP)
+            //A slight change in definition was applied to do this. 
+            if (prediction == 1) //predicted true
+            {
+                if (actual == 1) //pred == 1 && Y[itest] == 1 implies a true positive
+                {
+                    //TP++;
+                    currentTally[0]++;
+                }
+                else //pred == 1 && Y[itest] == 0 implies a false positive
+                {
+                    currentTally[1]++;
+                    //FP++;
+                }
+            }
+            else //predicted false
+            {
+                if (actual == 1) //pred == 0 && Y[itest] == 1 implies a false negative
+                {
+                    //FN++;
+                    currentTally[2]++;
+                }
+                else //pred == 0 && Y[itest] == 0 implies a true negative
+                {
+                    //TN++;
+                    currentTally[3]++;
+                }
+            }
+
+            return currentTally;
+        }
+
+        /// <summary>
+        /// Function DoEvaluation(). Calculates the metrics: accuracy, precision, recall, and F-measure.
+        /// Recall that tally = [TP, FP, FN, TN].
+        /// Returns the metrics for the current cross-validation iteration. 
+        /// </summary>
+        /// <param>The tally of true positives, true negatives, false positives, and false negatives.</param>
+        /// <returns>Returns the accuracy, precision, recall, and F-measure.</returns>
+        public static double[] DoEvaluation(double[] tally)
+        {
+            double[] metrics = {0,0,0,0};
+            
+            // Note: we are using a stratified cross-validation therefore the 
+            // classes are balanced. Accuracy = (TP + TN) / (TP + TN + FP + FN) 
+            metrics[0] = (tally[0] + tally[3]) / (tally[0] + tally[1] + tally[2] + tally[3]) * 100;
+            //metrics[1] is precision. Precision = TP / (TP + FP)
+            metrics[1] = (tally[0] / (tally[0] + tally[1])) * 100;
+            //metrics[2] is recall. Recall = TP / (TP + FN)
+            metrics[2] = (tally[0] / (tally[0] + tally[2])) * 100;
+            //metrics[3] is the F-measure. F-measure = (2 * recall * precision) / (recall + precision)
+            metrics[3] = ((2 * metrics[1] * metrics[2]) / (metrics[1] + metrics[2]));
+
+            return metrics;
+        }
+
+        /// <summary>
+        /// Function TestNaiveBayes_metrics(). Calculates class posterior probabilities for the test
+        /// dataset based on the loglikelihoods and logpriors from the train dataset. Returns 
+        /// the overall accuracy, precision, recall, and F-measure for the current 
+        /// cross-validation iteration.
+        /// </summary>
+        /// <param name="V">The vocabulary for the current cross-validation iteration</param>
+        /// <param name="W">The dictionary of common words</param>
+        /// <param name="X">The set of docs in the test dataset</param>
+        /// <param name="Y">The labels of docs in the test dataset</param>
+        /// <param name="loglp">Loglikelihoods for positive class</param>
+        /// <param name="logpp">Logprior probability for positive class</param>
+        /// <param name="logln">Loglikelihoods for negative class</param>
+        /// <param name="logpn">Logprior probability for negative class</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
+        /// <returns>accuracy, precision, recall, and F-measure for current cross-validation iteration</returns>
+        public static double[] TestNaiveBayes_metrics(Dictionary<string, double> V,
+                                            Dictionary<string, int> W,
+                                            List<string> X, List<int> Y,
+                                            Dictionary<string, double> loglp, double logpp,
+                                            Dictionary<string, double> logln, double logpn,
+                                            bool neg_handle = false)
+        {
+            // Y is only used to test the accuracy of the model!
+            int match = 0;
+            double[] metrics = { 0, 0, 0, 0 };
+            double[] tally = { 0, 0, 0, 0 };
+
+            // loop through every doc in test dataset
+            for (int itest = 0; itest < X.Count; itest++)
+            {
+                // initialize posterior probabilities to priors probabilities
+                double pprob = logpp;
+                double nprob = logpn;
+
+                // create vocab for this new review (never seen before)
+                Dictionary<string, double> vocab_test = new Dictionary<string, double>();
+                string review = X[itest];
+                List<string> creview = new List<string>() { review };
+                CreateVocab(creview, W, vocab_test, neg_handle);
+
+                foreach (var pair in vocab_test)
+                {
+                    // if token not present in vocabulary just discard
+                    // otherwise add likelihoods to logprior to give the 
+                    // posterior probabilities
+                    if (V.ContainsKey(pair.Key))
+                    {
+                        pprob += (pair.Value * loglp[pair.Key]);
+                        nprob += (pair.Value * logln[pair.Key]);
+                    }
+                }
+
+                // if posterior probability of positive class greater than
+                // posterior probability of negative class than 1 otherwise 0
+                // (recall label 1 is positive whilst label 0 is negative)
+                int pred = (pprob > nprob ? 1 : 0);
+                // 
+                tally = Tally(tally, pred, Y[itest]);
+                
+                // check whether prediction matches with label from test dataset.
+                //match = TP + TN.
+                match += (pred == Y[itest] ? 1 : 0);
+            }
+
+            // Evaluate the accuracy, recall, precision, and F-measure for the cross-validation
+            //iteration.
+            metrics = DoEvaluation(tally);
+
+            // return metrics (the accuracy, precision, recall, and F-measure).
+            return metrics;
+        }
+
+        /// <summary>
         /// Function CreateVocab_idf(). Same function as CreateVocab() but the value pair stores 
         /// tokens idfs (inverse document frequencies). idfs are calculated in a similar manner
         /// as in the scikit-learn library, i.e. idf = ln(N + 1 / df + 1) + 1 where N is the total
@@ -1141,12 +1309,80 @@ using System.Threading.Tasks;
         }
 
         /// <summary>
-        /// Function ModifyTokens(). Takes an array of string tokens, probably generated by 
-        /// function SplitWords() and modifies all tokens following a negation word such as 
-        /// "n't, not, never, no" adding the prefix "NOT_" till the first punctuation token.
+        /// Function TestNaiveBayes_tfidf_metrics(). Same as TestNaiveBayes_tfidf() but returns the overall
+        /// accuracy, precision, recall, and F-measure. 
         /// </summary>
-        /// <param name="tokens">String tokens to be modified.</param>
-        static void ModifyTokens(string[] tokens)
+        /// <param name="V">The vocabulary for the current cross-validation iteration</param>
+        /// <param name="W">The dictionary of common words</param>
+        /// <param name="X">The set of docs in the test dataset</param>
+        /// <param name="Y">The labels of docs in the test dataset</param>
+        /// <param name="loglp">Loglikelihoods for positive class</param>
+        /// <param name="logpp">Logprior probability for positive class</param>
+        /// <param name="logln">Loglikelihoods for negative class</param>
+        /// <param name="logpn">Logprior probability for negative class</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
+        /// <returns>accuracy, precision, recall, and F-measure for the current cross-validation iteration</returns>
+        public static double[] TestNaiveBayes_tfidf_metrics(Dictionary<string, double> V,
+                                            Dictionary<string, int> W,
+                                            List<string> X, List<int> Y,
+                                            Dictionary<string, double> loglp, double logpp,
+                                            Dictionary<string, double> logln, double logpn,
+                                            bool neg_handle = false)
+        {
+            
+            //QQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQQ
+            // Y is only used to test the accuracy of the model!
+            double[] metrics = { 0, 0, 0, 0 };
+            double[] tally = { 0, 0, 0, 0 };
+
+            // loop through every doc in test dataset
+            for (int itest = 0; itest < X.Count; itest++)
+            {
+                // initialize posterior probabilities to priors probabilities
+                double pprob = logpp;
+                double nprob = logpn;
+
+                // create vocab for this new review (never seen before)
+                Dictionary<string, double> vocab_test = new Dictionary<string, double>();
+                string review = X[itest];
+                List<string> creview = new List<string>() { review };
+                // calculate tfidfs
+                CalculateTfIdf(creview, W, vocab_test, V, neg_handle);
+
+                foreach (var pair in vocab_test)
+                {
+                    // if token not present in vocabulary just discard
+                    // otherwise add likelihoods to logprior to give the 
+                    // posterior probabilities
+                    if (V.ContainsKey(pair.Key))
+                    {
+                        pprob += (pair.Value * loglp[pair.Key]);
+                        nprob += (pair.Value * logln[pair.Key]);
+                    }
+                }
+
+                // if posterior probability of positive class greater than
+                // posterior probability of negative class than 1 otherwise 0
+                // (recall label 1 is positive whilst label 0 is negative)
+                int pred = (pprob > nprob ? 1 : 0);
+                tally = Tally(tally, pred, Y[itest]);
+            }
+
+            // Evaluate the accuracy, recall, precision, and F-measure for the cross-validation
+            //iteration.
+            metrics = DoEvaluation(tally);
+
+            // return the accuracy, precision, recall, and F-measure.
+            return metrics;
+        }
+
+    /// <summary>
+    /// Function ModifyTokens(). Takes an array of string tokens, probably generated by 
+    /// function SplitWords() and modifies all tokens following a negation word such as 
+    /// "n't, not, never, no" adding the prefix "NOT_" till the first punctuation token.
+    /// </summary>
+    /// <param name="tokens">String tokens to be modified.</param>
+    static void ModifyTokens(string[] tokens)
         {
             for (int i = 0; i < tokens.Length; i++)
             {
