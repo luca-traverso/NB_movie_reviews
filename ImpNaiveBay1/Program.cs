@@ -34,7 +34,7 @@ using System.Threading.Tasks;
             Console.WriteLine("*********Application to movie review classification**********");
             Console.WriteLine("*************************************************************");
             Console.WriteLine("");
-            Console.WriteLine("Fold   MNB[case1a]     MNB[case1b]     TfIdfMNB[case2a]      TfIdfMNB[case2b]      TfIdfMNB[case3a]      TfIdfMNB[case3b]");
+            Console.WriteLine("Fold   MNB[case1a]     MNB[case1b]     MNB[case1c]     MNB[case1d]     TfIdfMNB[case2a]      TfIdfMNB[case2b]      TfIdfMNB[case3a]      TfIdfMNB[case3b]");
 
 
             // load the whole review corpus.
@@ -45,7 +45,7 @@ using System.Threading.Tasks;
 
             // load stop-words - use the scikit-learn list of stopwords consisting of 318 
             // common words.
-            string file_stopw = root_dir + "scikit_stopw_not.txt";
+            string file_stopw = root_dir + "scikit_stopw.txt";
             Dictionary<string, int> dic_stopw = new Dictionary<string, int>();
             LoadDictionary(dic_stopw, file_stopw);
 
@@ -101,6 +101,38 @@ using System.Threading.Tasks;
                 // let's assess the performance of the multinomial Naive Bayes on the test dataset
                 double accuracy_not = TestNaiveBayes(vocab_not, dic_stopw, xtest, ytest, loglp_not,
                                                    logpp_not, logln_not, logpn_not, neg_handle: true);
+
+
+                //**** CASE 1c: MNB standard - bigram -  negation not handled ****
+                // create vocabulary
+                // N.B. only use docs from train dataset
+                Dictionary<string, double> vocab_bi = new Dictionary<string, double>();
+                CreateVocab_bi(xtrain, dic_stopw, vocab_bi);
+
+                // calculate loglikelihoods, logprior for each class (positive and negative)
+                // standard MNB
+                var (loglp_bi, logpp_bi) = NBproba_bi(vocab_bi, dic_stopw, xtrain, ytrain, "positive");
+                var (logln_bi, logpn_bi) = NBproba_bi(vocab_bi, dic_stopw, xtrain, ytrain, "negative");
+
+                // let's assess the performance of the multinomial Naive Bayes on the test dataset
+                double accuracy_bi = TestNaiveBayes_bi(vocab_bi, dic_stopw, xtest, ytest, loglp_bi,
+                                                   logpp_bi, logln_bi, logpn_bi);
+
+                //**** CASE 1d: MNB standard - bigram -  negation handled ****
+                // create vocabulary
+                // N.B. only use docs from train dataset
+                Dictionary<string, double> vocab_bi_not = new Dictionary<string, double>();
+                CreateVocab_bi(xtrain, dic_stopw, vocab_bi_not, neg_handle: true);
+
+                // calculate loglikelihoods, logprior for each class (positive and negative)
+                // standard MNB
+                var (loglp_bi_not, logpp_bi_not) = NBproba_bi(vocab_bi_not, dic_stopw, xtrain, ytrain, "positive", neg_handle: true);
+                var (logln_bi_not, logpn_bi_not) = NBproba_bi(vocab_bi_not, dic_stopw, xtrain, ytrain, "negative", neg_handle: true);
+
+                // let's assess the performance of the multinomial Naive Bayes on the test dataset
+                double accuracy_bi_not = TestNaiveBayes_bi(vocab_bi_not, dic_stopw, xtest, ytest, loglp_bi_not,
+                                                   logpp_bi_not, logln_bi_not, logpn_bi_not, neg_handle: true);
+
 
                 //**** CASE 2a: MNB tf-idf weights - V not reduced, negation not handled ****
                 // create vocabulary storing idfs rather than simple count
@@ -158,8 +190,8 @@ using System.Threading.Tasks;
                                                     loglp_tfidf_red_neg, logpp_tfidf_red_neg, logln_tfidf_red_neg,
                                                     logpn_tfidf_red_neg, neg_handle:true);
 
-                Console.WriteLine("{0}           {1:0.00}%          {2:0.00}%               {3:0.00}%                {4:0.00}%                {5:0.00}%                {6:0.00}%",
-                                        ifold, accuracy, accuracy_not, accuracy_tfidf, accuracy_tfidf_neg, accuracy_tfidf_red, accuracy_tfidf_red_neg);
+                Console.WriteLine("{0}           {1:0.00}%          {2:0.00}%          {3:0.00}%               {4:0.00}%                {5:0.00}%                {6:0.00}%                {7:0.00}%               {8:0.00}%",
+                                        ifold, accuracy, accuracy_not, accuracy_bi, accuracy_bi_not, accuracy_tfidf, accuracy_tfidf_neg, accuracy_tfidf_red, accuracy_tfidf_red_neg);
 
             }
             Console.WriteLine("Press any key to exit.");
@@ -478,6 +510,75 @@ using System.Threading.Tasks;
             }
         }
 
+
+        /// <summary>
+        /// Function CreateVocab_bi(). Splits each string document in the train dataset into tokens.
+        /// For every two consecutive tokens created checks If the first one is a stop word and the second one is not
+        /// then combine two tokens in the form "token[j] + ' ' + token[j+1]" to get the bigram, and the bigram is added to the vocabulary.
+        /// </summary>
+        /// <param name="docs">The document train dataset used to create the vocabulary</param>
+        /// <param name="stopw">The set of common words to remove from the vocabulary</param>
+        /// <param name="V">The vocabulary created for the current cross-validation iteration</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
+        static void CreateVocab_bi(List<string> docs,
+                                 Dictionary<string, int> stopw,
+                                 Dictionary<string, double> V,
+                                 bool neg_handle = false)
+        {
+            for (int i = 0; i < docs.Count; i++)
+            {
+                // tockenize the review
+
+                string[] tokens = SplitWords(docs[i], neg_handle);
+
+                // modify tokens if we need to handle negation
+                if (neg_handle) { ModifyTokens(tokens); }
+
+                if (!neg_handle)
+                {
+                    for (var j = 0; j < tokens.Length - 1; j++)
+                    {
+                        // update the term frequency dictionary
+                        if (stopw.ContainsKey(tokens[j]) && !stopw.ContainsKey(tokens[j + 1]))
+                        {
+                            String bigram = tokens[j].Trim() + ' ' + tokens[j + 1].Trim();
+                            // add unique tokens to temporary dictionary
+                            if (!V.ContainsKey(bigram))
+                            {
+                                V.Add(bigram, 1);
+                            }
+                            else
+                            {
+                                V[bigram] += 1;
+                            }
+                        }
+                    }
+                }
+                // need to exclude punctuation tokens which you needed to handle negation
+                else
+                {
+                    for (var j = 0; j < tokens.Length - 1; j++)
+                    {
+                        // update the term frequency dictionary
+                        if (stopw.ContainsKey(tokens[j]) && !stopw.ContainsKey(tokens[j+1]) && tokens[j+1] != "," && tokens[j+1] != "." &&
+                            tokens[j+1] != "!" && tokens[j+1] != "?" && tokens[j+1] != ";")
+                        {
+                            String bigram = tokens[j].Trim() + ' ' + tokens[j + 1].Trim();
+                            // add unique tokens to temporary dictionary
+                            if (!V.ContainsKey(bigram))
+                            {
+                                V.Add(bigram, 1);
+                            }
+                            else
+                            {
+                                V[bigram] += 1;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         /// <summary>
         /// Function SplitWords(). Splits a string into tokens based on Regex matching.
         /// Currently the function splits based on non-alphanumerics characters including '_',
@@ -618,6 +719,85 @@ using System.Threading.Tasks;
         }
 
         /// <summary>
+        /// Function NBproba(). Calculates the loglikelihood for each token (word) in 
+        /// the vocabuary for a given class (e.g. positive or negative) of documents. The
+        /// loglikelihoods are stored as key, value pairs in a dictionary where the keys
+        /// are the tokens and the values are the loglikelihoods.
+        /// The implementation follows the algorithm presented in
+        /// [REF:Speech and Language Processing. Daniel Jurafsky and James H. Martin. Copyright 2016.]
+        /// The loglikelihood is calculated as follow:
+        /// logl[w,c] = (1 + count(w,c in V)) / (sum(count(all w,c in V) + num w in V))
+        /// </summary>
+        /// <param name="V">The vocabulary for the current cross-validation iteration</param>
+        /// <param name="W">The dictionary of common words</param>
+        /// <param name="X">The set of docs in the train dataset</param>
+        /// <param name="Y">The labels of docs in the train dataset</param>
+        /// <param name="driver">The class being analyzed (e.g. positive or negative)</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
+        /// <returns>Dictionary of class likelihoods for each token in the vocabulary,
+        /// the logprior probability for the class analyzed</returns>
+        public static (Dictionary<string, double> logl, double logp) NBproba_bi(
+                            Dictionary<string, double> V, Dictionary<string, int> W,
+                            List<string> X, List<int> Y, string driver,
+                            bool neg_handle = false)
+        {
+            // Xp contains docs for class analyzed
+            List<string> Xp = new List<string>();
+            // Dictionary of loglikelihoods to return
+            Dictionary<string, double> logl = new Dictionary<string, double>();
+            // Temporary dictionary
+            Dictionary<string, double> vocab_cat = new Dictionary<string, double>();
+            // logprior probability to return
+            double logp = 0.0;
+
+            // first select docs for class analyzed
+            Xp = (driver.Equals("positive") ? SelectReviews(X, Y, 1) : SelectReviews(X, Y, 0));
+
+            // create a dictionary(key,count) based on docs for class being analyzed 
+            CreateVocab_bi(Xp, W, vocab_cat, neg_handle);
+            //Console.WriteLine(vocab_cat.Count);
+
+            // get total count of words in class vocabulary.
+            // this is neeeded for loglikelihood calculations (first term in the denominator)
+            // logl[w,c] = 1 + count(w,c in V) / (sum(count(all w,c in V) + num w in V))
+            double count_all_w = 0;
+            foreach (var pair in V)
+            {
+                if (vocab_cat.ContainsKey(pair.Key))
+                {
+                    // sum(count(all w,c in V)
+                    count_all_w += vocab_cat[pair.Key];
+                }
+            }
+
+            // loop through all the tokens in the vocabulary and calculate 
+            // the loglikelihoods. 
+            foreach (var pair in V)
+            {
+                if (vocab_cat.ContainsKey(pair.Key))
+                {
+                    // logl[w,c]
+                    logl.Add(pair.Key,
+                        Math.Log((double)(vocab_cat[pair.Key] + 1) / (count_all_w + V.Count)));
+                }
+                else
+                {
+                    // this is necessary to take into account words that are present in the 
+                    // vocabulary but not in the vocabulary for the class analyzed 
+                    logl.Add(pair.Key,
+                        Math.Log((double)(1) / (count_all_w + V.Count)));
+                }
+            }
+
+            // calculate the logprior probability for the class analyzed 
+            logp = Math.Log((double)Xp.Count / X.Count);
+
+            // return loglikelihoods and logprior
+            return (logl, logp);
+
+        }
+
+        /// <summary>
         /// Function SelectReviews(). Selects all the docs belonging to the class being
         /// analyzed.
         /// </summary>
@@ -676,6 +856,81 @@ using System.Threading.Tasks;
                 string review = X[itest];
                 List<string> creview = new List<string>() { review };
                 CreateVocab(creview, W, vocab_test, neg_handle);
+
+                foreach (var pair in vocab_test)
+                {
+                    // if token not present in vocabulary just discard
+                    // otherwise add likelihoods to logprior to give the 
+                    // posterior probabilities
+                    if (V.ContainsKey(pair.Key))
+                    {
+                        pprob += (pair.Value * loglp[pair.Key]);
+                        nprob += (pair.Value * logln[pair.Key]);
+                    }
+                }
+
+                //Console.WriteLine("positive: {0} and negative: {1}", pprob, nprob);
+                // calculate posterior probability - not use - keep logs, becomes too small
+                //pprob_ = Math.Exp(pprob) / (Math.Exp(pprob) + Math.Exp(nprob));
+                //nprob_ = Math.Exp(nprob) / (Math.Exp(pprob) + Math.Exp(nprob));
+
+                // if posterior probability of positive class greater than
+                // posterior probability of negative class than 1 otherwise 0
+                // (recall label 1 is positive whilst label 0 is negative)
+                int pred = (pprob > nprob ? 1 : 0);
+                // check whether prediction matches with label from test dataset.
+                match += (pred == Y[itest] ? 1 : 0);
+            }
+            //Console.WriteLine("{0} {1}", pprob_, nprob_);
+            //Console.WriteLine(match);
+
+            // Note: we are using a stratified cross-validation therefore the 
+            // classes are balanced. Accuracy = (TP + TN) / (TP + TN + FP + FN) 
+            accuracy = ((double)match / Y.Count) * 100;
+
+            // return the accuracy
+            return accuracy;
+        }
+
+
+        /// <summary>
+        /// Function TestNaiveBayes(). Calculates class posterior probabilities for the test
+        /// dataset based on the loglikelihoods and logpriors from the train dataset. Returns 
+        /// the overall accuracy for the current cross-validation iteration.
+        /// </summary>
+        /// <param name="V">The vocabulary for the current cross-validation iteration</param>
+        /// <param name="W">The dictionary of common words</param>
+        /// <param name="X">The set of docs in the test dataset</param>
+        /// <param name="Y">The labels of docs in the test dataset</param>
+        /// <param name="loglp">Loglikelihoods for positive class</param>
+        /// <param name="logpp">Logprior probability for positive class</param>
+        /// <param name="logln">Loglikelihoods for negative class</param>
+        /// <param name="logpn">Logprior probability for negative class</param>
+        /// <param name="neg_handle">Boolean flag indicating whether negation should be handled or not</param>
+        /// <returns>accuracy for current cross-validation iteration</returns>
+        public static double TestNaiveBayes_bi(Dictionary<string, double> V,
+                                            Dictionary<string, int> W,
+                                            List<string> X, List<int> Y,
+                                            Dictionary<string, double> loglp, double logpp,
+                                            Dictionary<string, double> logln, double logpn,
+                                            bool neg_handle = false)
+        {
+            // Y is only used to test the accuracy of the model!
+            double accuracy = 0.0;
+            int match = 0;
+
+            // loop through every doc in test dataset
+            for (int itest = 0; itest < X.Count; itest++)
+            {
+                // initialize posterior probabilities to priors probabilities
+                double pprob = logpp;
+                double nprob = logpn;
+
+                // create vocab for this new review (never seen before)
+                Dictionary<string, double> vocab_test = new Dictionary<string, double>();
+                string review = X[itest];
+                List<string> creview = new List<string>() { review };
+                CreateVocab_bi(creview, W, vocab_test, neg_handle);
 
                 foreach (var pair in vocab_test)
                 {
