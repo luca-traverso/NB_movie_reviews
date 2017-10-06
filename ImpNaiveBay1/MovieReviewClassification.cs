@@ -1063,7 +1063,7 @@ namespace ImpNaiveBay1
 
             // load stop-words - use the scikit-learn list of stopwords consisting of 318 
             // common words.
-            string file_stopw = root_dir + "scikit_stopw.txt";
+            string file_stopw = root_dir + "scikit_stopw_not.txt";
             Dictionary<string, int> dic_stopw = new Dictionary<string, int>();
             LoadDictionary(dic_stopw, file_stopw);
 
