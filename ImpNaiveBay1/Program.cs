@@ -34,7 +34,7 @@ using System.Threading.Tasks;
             Console.WriteLine("*********Application to movie review classification**********");
             Console.WriteLine("*************************************************************");
             Console.WriteLine("");
-            Console.WriteLine("Fold   MNB   TfIdfMNB");
+            Console.WriteLine("Fold   TfIdfMNB");
 
             MovieReviewClassification ClassificationForm = new MovieReviewClassification();
             ClassificationForm.ShowDialog();

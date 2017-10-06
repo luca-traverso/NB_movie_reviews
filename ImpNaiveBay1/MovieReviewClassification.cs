@@ -986,12 +986,12 @@ namespace ImpNaiveBay1
 
                 // calculate loglikelihoods, logprior for each class (positive and negative)
                 // standard MNB
-                var (loglp, logpp) = NBproba(vocab, dic_stopw, xtrain, ytrain, "positive");
-                var (logln, logpn) = NBproba(vocab, dic_stopw, xtrain, ytrain, "negative");
+                //var (loglp, logpp) = NBproba(vocab, dic_stopw, xtrain, ytrain, "positive");
+                //var (logln, logpn) = NBproba(vocab, dic_stopw, xtrain, ytrain, "negative");
 
                 // let's assess the performance of the multinomial Naive Bayes on the test dataset
-                double accuracy = TestNaiveBayes(vocab, dic_stopw, xtest, ytest, loglp,
-                                                   logpp, logln, logpn);
+                //double accuracy = TestNaiveBayes(vocab, dic_stopw, xtest, ytest, loglp,
+                //                                   logpp, logln, logpn);
 
                 // tfidf MNB
                 var (loglp_tfidf, logpp_tfidf) = NBproba_tfidf(vocab_idf, dic_stopw, xtrain, ytrain, "positive");
@@ -1000,7 +1000,8 @@ namespace ImpNaiveBay1
                 double accuracy_tfidf = TestNaiveBayes_tfidf(ifold, vocab_idf, dic_stopw, xtest, ytest, loglp_tfidf,
                                                    logpp_tfidf, logln_tfidf, logpn_tfidf);
 
-                Console.WriteLine("{0}     {1}%     {2}%", ifold, accuracy, accuracy_tfidf);
+                //Console.WriteLine("{0}     {1}%     {2}%", ifold, accuracy, accuracy_tfidf);
+                Console.WriteLine("{0}     {1}%", ifold, accuracy_tfidf);
 
             }
         }
