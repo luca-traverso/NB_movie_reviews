@@ -37,7 +37,6 @@ using System.Threading.Tasks;
             Console.WriteLine("");
             Console.WriteLine("Fold   TfIdfMNB[case3a]");
 
-
             // load the whole review corpus.
             string root_dir = Directory.GetCurrentDirectory() + "\\txt_sentoken\\";
             // store reviews in a list of strings.
@@ -85,7 +84,8 @@ using System.Threading.Tasks;
                 double accuracy_tfidf_red = TestNaiveBayes_tfidf(vocab_idf_red, dic_stopw, xtest, ytest, loglp_tfidf_red,
                                                    logpp_tfidf_red, logln_tfidf_red, logpn_tfidf_red);
 
-                CreateVocab_idf(xtrain, dic_stopw, vocab_idf_red, 5, 0.8, 10000);
+                CreateVocab_idf(xtrain, dic_stopw, vocab_idf_red,
+                    5, 0.8, 10000, neg_handle: true, ngrams: "mixed");
 
 
                 Console.WriteLine("{0}           {1:0.00}%",
@@ -640,7 +640,8 @@ using System.Threading.Tasks;
                                  int min_df,
                                  double max_df,
                                  int max_features,
-                                 bool neg_handle = false)
+                                 bool neg_handle = false,
+                                 string ngrams = null)
         {
 
             // dictionary that keep tracks of the count of each term
@@ -663,6 +664,11 @@ using System.Threading.Tasks;
                 if (neg_handle) { ModifyTokens(tokens); }
 
                 if (neg_handle) { RemovePunctuation(tokens); }
+
+                if(ngrams != null)
+                {
+                    CreateNgrams(tokens, ngrams);
+                }
 
                 for (var j = 0; j < tokens.Count; j++)
                 {
@@ -996,6 +1002,34 @@ using System.Threading.Tasks;
 
             // return the accuracy
             return accuracy;
+        }
+
+        static void CreateNgrams(ArrayList tokens, string ngrams)
+        {
+
+            if (ngrams.Equals("bi"))
+            {
+                // bigrams are  created and added whilst unigrams are removed
+                for (int i = 0; i < tokens.Count-1; i++)
+                {
+                    string bigram = "";
+                    bigram = tokens[i].ToString() + " " + tokens[i + 1].ToString();
+                    tokens.RemoveAt(i);
+                    tokens.Insert(i, bigram);
+                }
+                // remove last token
+                tokens.RemoveAt(tokens.Count - 1);
+            }
+            else
+            {
+                // bigrams are  created and added together with unigrams
+                for (int i = 0; i < tokens.Count - 1; i++)
+                {
+                    string bigram = tokens[i].ToString() + " " + tokens[i + 1].ToString();
+                    tokens.RemoveAt(i);
+                    tokens.Insert(i,bigram);
+                }
+            }
         }
 
         static void RemovePunctuation(ArrayList tokens)
