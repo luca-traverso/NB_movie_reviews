@@ -21,6 +21,7 @@ namespace ImpNaiveBay1
         }
 
         public  List<FoldResult> MovieReviewResults = new List<FoldResult>();
+        public List<ClassificationResult> FinalResults = new List<ClassificationResult>();
         public Dictionary<string, string> DocNames = new Dictionary<string, string>();
         /// <summary>
         /// Function LoadCorpus(). Loads the document corpus into a list. Positively
@@ -1013,7 +1014,6 @@ namespace ImpNaiveBay1
                     gridMovieReview.RefreshDataSource();
                     gridMovieReview.EndUpdate();
                 }));
-
             }
             
             //Console.WriteLine("{0} {1}", pprob_, nprob_);
@@ -1029,6 +1029,10 @@ namespace ImpNaiveBay1
                 gridMovieReview.RefreshDataSource();
                 gridMovieReview.Refresh();
                 gridMovieReview.EndUpdate();
+            }));
+            chartBar.Invoke(new MethodInvoker(delegate
+            {
+                chartBar.RefreshData();
             }));
             // return the accuracy
             return accuracy;
@@ -1052,8 +1056,8 @@ namespace ImpNaiveBay1
                 //viewFold.ExpandAllGroups();
             }));
 
+            bindingMovieReviews.DataSource = MovieReviewResults;
 
-            
 
             // load the whole review corpus.
             string root_dir = Directory.GetCurrentDirectory() + "\\txt_sentoken\\";
@@ -1127,6 +1131,19 @@ namespace ImpNaiveBay1
         private void bgWorker_Completed(object sender, RunWorkerCompletedEventArgs e)
         {
             lblAccuracy.Text = (MovieReviewResults.Sum(m => m.Accuracy) / 10.0).ToString()+"%";
+            ClassificationResult correctResult = new ClassificationResult();
+            correctResult.CategoryName = "Average Accuracy";
+            correctResult.Accuracy = (MovieReviewResults.Sum(m => m.Accuracy) / 10.0);
+            ClassificationResult wrongResult = new ClassificationResult();
+            wrongResult.CategoryName = "Inaccuracy";
+            wrongResult.Accuracy = 100.0 - correctResult.Accuracy;
+            FinalResults.Add(correctResult);
+            FinalResults.Add(wrongResult);
+            bindingFinalResult.DataSource = FinalResults;
+            chartPie.Invoke(new MethodInvoker(delegate
+            {
+                chartPie.RefreshData();
+            }));
         }
 
         private void viewMovies_RowStyle(object sender, DevExpress.XtraGrid.Views.Grid.RowStyleEventArgs e)
