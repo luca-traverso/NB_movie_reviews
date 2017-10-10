@@ -35,7 +35,7 @@ using System.Threading.Tasks;
             Console.WriteLine("*********Application to movie review classification**********");
             Console.WriteLine("*************************************************************");
             Console.WriteLine("");
-            Console.WriteLine("Fold   TfIdfMNB[case3a]");
+            Console.WriteLine("Fold   TfIdfMNB[case_bi-3a]   TfIdfMNB[case_bi-3b]   TfIdfMNB[case_mix-3a]   TfIdfMNB[case_mix-3b]");
 
             // load the whole review corpus.
             string root_dir = Directory.GetCurrentDirectory() + "\\txt_sentoken\\";
@@ -71,38 +71,81 @@ using System.Threading.Tasks;
                 var (xtrain, xtest, ytrain, ytest) = GetSets(doc_corpus, labels,
                                                               l1[ifold], l2[ifold]);
 
-                //**** CASE 3a: MNB tf-idf weights - V reduced, negation not handled ****
-                Dictionary<string, double> vocab_idf_red = new Dictionary<string, double>();
-                CreateVocab_idf(xtrain, dic_stopw, vocab_idf_red, 5, 0.8, 10000);
+                //**** CASE bi-3a: MNB tf-idf weights - V reduced, negation not handled ****
+                Dictionary<string, double> vocab_idf_red_bi = new Dictionary<string, double>();
+                CreateVocab_idf(xtrain, dic_stopw, vocab_idf_red_bi, 5, 0.8, 10000,
+                    neg_handle: false, ngrams: "bi"); ;
 
                 // tfidf MNB with Vocabulary reduced
-                var (loglp_tfidf_red, logpp_tfidf_red) = NBproba_tfidf(vocab_idf_red, dic_stopw,
-                                                                            xtrain, ytrain, "positive");
-                var (logln_tfidf_red, logpn_tfidf_red) = NBproba_tfidf(vocab_idf_red, dic_stopw,
-                                                                            xtrain, ytrain, "negative");
+                var (loglp_tfidf_red_bi, logpp_tfidf_red_bi) = NBproba_tfidf(vocab_idf_red_bi, dic_stopw,
+                                                                            xtrain, ytrain, "positive",
+                                                                            neg_handle: false, ngrams: "bi");
+                var (logln_tfidf_red_bi, logpn_tfidf_red_bi) = NBproba_tfidf(vocab_idf_red_bi, dic_stopw,
+                                                                            xtrain, ytrain, "negative",
+                                                                            neg_handle: false, ngrams: "bi");
 
-                double accuracy_tfidf_red = TestNaiveBayes_tfidf(vocab_idf_red, dic_stopw, xtest, ytest, loglp_tfidf_red,
-                                                   logpp_tfidf_red, logln_tfidf_red, logpn_tfidf_red);
+                double accuracy_tfidf_red_bi = TestNaiveBayes_tfidf(vocab_idf_red_bi, dic_stopw,
+                                                    xtest, ytest, loglp_tfidf_red_bi,
+                                                   logpp_tfidf_red_bi, logln_tfidf_red_bi, logpn_tfidf_red_bi,
+                                                   neg_handle: false, ngrams: "bi");
 
-                Dictionary<string, double> vocab_mix_red = new Dictionary<string, double>();
-                CreateVocab_idf(xtrain, dic_stopw, vocab_mix_red,
+                //**** CASE bi-3b: MNB tf-idf weights - V reduced, negation handled ****
+                Dictionary<string, double> vocab_bi_red_neg = new Dictionary<string, double>();
+                CreateVocab_idf(xtrain, dic_stopw, vocab_bi_red_neg,
                     5, 0.8, 10000, neg_handle: true, ngrams: "bi");
 
                 // tfidf MNB with Vocabulary reduced
-                var (loglp_tfidf_red_mix, logpp_tfidf_red_mix) = NBproba_tfidf(vocab_mix_red, dic_stopw,
+                var (loglp_tfidf_red_bi_neg, logpp_tfidf_red_bi_neg) = NBproba_tfidf(vocab_bi_red_neg, dic_stopw,
                                                                xtrain, ytrain, "positive",
                                                                neg_handle: true, ngrams: "bi");
-                var (logln_tfidf_red_mix, logpn_tfidf_red_mix) = NBproba_tfidf(vocab_mix_red, dic_stopw,
+                var (logln_tfidf_red_bi_neg, logpn_tfidf_red_bi_neg) = NBproba_tfidf(vocab_bi_red_neg, dic_stopw,
                                                                xtrain, ytrain, "negative",
                                                                neg_handle: true, ngrams: "bi");
 
-                double accuracy_tfidf_red_mix = TestNaiveBayes_tfidf(vocab_mix_red, dic_stopw,
+                double accuracy_tfidf_red_bi_neg = TestNaiveBayes_tfidf(vocab_bi_red_neg, dic_stopw,
+                                                    xtest, ytest, loglp_tfidf_red_bi_neg,
+                                                   logpp_tfidf_red_bi_neg, logln_tfidf_red_bi_neg,
+                                                   logpn_tfidf_red_bi_neg, neg_handle: true, ngrams:"bi");
+                
+                //**** CASE mix-3a: MNB tf-idf weights - V reduced, negation not handled ****
+                Dictionary<string, double> vocab_idf_red_mix = new Dictionary<string, double>();
+                CreateVocab_idf(xtrain, dic_stopw, vocab_idf_red_mix, 5, 0.8, 10000,
+                    neg_handle: false, ngrams: "mix"); ;
+
+                // tfidf MNB with Vocabulary reduced
+                var (loglp_tfidf_red_mix, logpp_tfidf_red_mix) = NBproba_tfidf(vocab_idf_red_mix, dic_stopw,
+                                                                            xtrain, ytrain, "positive",
+                                                                            neg_handle: false, ngrams: "mix");
+                var (logln_tfidf_red_mix, logpn_tfidf_red_mix) = NBproba_tfidf(vocab_idf_red_mix, dic_stopw,
+                                                                            xtrain, ytrain, "negative",
+                                                                            neg_handle: false, ngrams: "mix");
+
+                double accuracy_tfidf_red_mix = TestNaiveBayes_tfidf(vocab_idf_red_mix, dic_stopw,
                                                     xtest, ytest, loglp_tfidf_red_mix,
-                                                   logpp_tfidf_red_mix, logln_tfidf_red_mix,
-                                                   logpn_tfidf_red_mix, neg_handle: true, ngrams:"bi");
-                                                   
-                Console.WriteLine("{0}           {1:0.00}%           {2:0.00}%",
-                                        ifold, accuracy_tfidf_red, accuracy_tfidf_red_mix);
+                                                   logpp_tfidf_red_mix, logln_tfidf_red_mix, logpn_tfidf_red_mix,
+                                                   neg_handle: false, ngrams: "mix");
+                
+                //**** CASE bi-3b: MNB tf-idf weights - V reduced, negation handled ****
+                Dictionary<string, double> vocab_bi_red_mix_neg = new Dictionary<string, double>();
+                CreateVocab_idf(xtrain, dic_stopw, vocab_bi_red_mix_neg,
+                    5, 0.8, 10000, neg_handle: true, ngrams: "mix");
+
+                // tfidf MNB with Vocabulary reduced
+                var (loglp_tfidf_red_mix_neg, logpp_tfidf_red_mix_neg) = NBproba_tfidf(vocab_bi_red_mix_neg, dic_stopw,
+                                                               xtrain, ytrain, "positive",
+                                                               neg_handle: true, ngrams: "mix");
+                var (logln_tfidf_red_mix_neg, logpn_tfidf_red_mix_neg) = NBproba_tfidf(vocab_bi_red_mix_neg, dic_stopw,
+                                                               xtrain, ytrain, "negative",
+                                                               neg_handle: true, ngrams: "mix");
+
+                double accuracy_tfidf_red_mix_neg = TestNaiveBayes_tfidf(vocab_bi_red_mix_neg, dic_stopw,
+                                                    xtest, ytest, loglp_tfidf_red_mix_neg,
+                                                   logpp_tfidf_red_mix_neg, logln_tfidf_red_mix_neg,
+                                                   logpn_tfidf_red_mix_neg, neg_handle: true, ngrams: "mix");
+                
+                Console.WriteLine("{0}           {1:0.00}%           {2:0.00}%           {3:0.00}%           {4:0.00}%",
+                                        ifold, accuracy_tfidf_red_bi, accuracy_tfidf_red_bi_neg,
+                                        accuracy_tfidf_red_mix, accuracy_tfidf_red_mix_neg);
 
             }
             Console.WriteLine("Press any key to exit.");
