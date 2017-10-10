@@ -43,6 +43,9 @@ using System.Threading.Tasks;
             List<string> doc_corpus = new List<string>();
             doc_corpus = LoadCorpus(root_dir);
 
+            // calculate review average size
+            CalculateRevAvgSize(doc_corpus);
+
             // load stop-words - use the scikit-learn list of stopwords consisting of 318 
             // common words.
             string file_stopw = root_dir + "scikit_stopw_not.txt";
@@ -1169,6 +1172,17 @@ using System.Threading.Tasks;
                 //Console.WriteLine(tokens[i]);
             }
 
+        }
+
+        static void CalculateRevAvgSize(List<string> docs)
+        {
+            int review_size = 0;
+            foreach(var doc in docs)
+            {
+                review_size += SplitWords(doc, false).Length;
+            }
+            float avg_review_size = (float)review_size / docs.Count;
+            //Console.WriteLine(avg_review_size);
         }
     }
 }
