@@ -84,12 +84,25 @@ using System.Threading.Tasks;
                 double accuracy_tfidf_red = TestNaiveBayes_tfidf(vocab_idf_red, dic_stopw, xtest, ytest, loglp_tfidf_red,
                                                    logpp_tfidf_red, logln_tfidf_red, logpn_tfidf_red);
 
-                CreateVocab_idf(xtrain, dic_stopw, vocab_idf_red,
-                    5, 0.8, 10000, neg_handle: true, ngrams: "mixed");
+                Dictionary<string, double> vocab_mix_red = new Dictionary<string, double>();
+                CreateVocab_idf(xtrain, dic_stopw, vocab_mix_red,
+                    5, 0.8, 10000, neg_handle: true, ngrams: "bi");
 
+                // tfidf MNB with Vocabulary reduced
+                var (loglp_tfidf_red_mix, logpp_tfidf_red_mix) = NBproba_tfidf(vocab_mix_red, dic_stopw,
+                                                               xtrain, ytrain, "positive",
+                                                               neg_handle: true, ngrams: "bi");
+                var (logln_tfidf_red_mix, logpn_tfidf_red_mix) = NBproba_tfidf(vocab_mix_red, dic_stopw,
+                                                               xtrain, ytrain, "negative",
+                                                               neg_handle: true, ngrams: "bi");
 
-                Console.WriteLine("{0}           {1:0.00}%",
-                                        ifold, accuracy_tfidf_red);
+                double accuracy_tfidf_red_mix = TestNaiveBayes_tfidf(vocab_mix_red, dic_stopw,
+                                                    xtest, ytest, loglp_tfidf_red_mix,
+                                                   logpp_tfidf_red_mix, logln_tfidf_red_mix,
+                                                   logpn_tfidf_red_mix, neg_handle: true, ngrams:"bi");
+                                                   
+                Console.WriteLine("{0}           {1:0.00}%           {2:0.00}%",
+                                        ifold, accuracy_tfidf_red, accuracy_tfidf_red_mix);
 
             }
             Console.WriteLine("Press any key to exit.");
@@ -359,7 +372,7 @@ using System.Threading.Tasks;
             for (int i = 0; i < docs.Count; i++)
             {
                 // tockenize the review
-                ArrayList tokens = new ArrayList();
+                List<string> tokens = new List<string>();
                 string[] tokens_ = SplitWords(docs[i], neg_handle);
                 tokens.AddRange(tokens_);
 
@@ -656,14 +669,18 @@ using System.Threading.Tasks;
                 Dictionary<string, int> tempfreq = new Dictionary<string, int>();
 
                 // tockenize the review
-                ArrayList tokens = new ArrayList();
+                List<string> tokens = new List<string>();
                 string[] tokens_ = SplitWords(docs[i], neg_handle);
                 tokens.AddRange(tokens_);
 
                 // modify tokens if we need to handle negation
                 if (neg_handle) { ModifyTokens(tokens); }
 
+                // remove punctuation from tokens
                 if (neg_handle) { RemovePunctuation(tokens); }
+
+                // remove stopwords
+                RemoveStopWords(tokens, stopw);
 
                 if(ngrams != null)
                 {
@@ -673,8 +690,8 @@ using System.Threading.Tasks;
                 for (var j = 0; j < tokens.Count; j++)
                 {
                     // update the term frequency dictionary
-                    if (!stopw.ContainsKey(tokens[j].ToString()))
-                    {
+                    //if (!stopw.ContainsKey(tokens[j].ToString()))
+                    //{
                         // add unique tokens to temporary dictionary
                         if (!tempd.ContainsKey(tokens[j].ToString()))
                         {
@@ -688,7 +705,7 @@ using System.Threading.Tasks;
                         {
                             tempfreq[tokens[j].ToString()] += 1;
                         }
-                    }
+                    //}
                 }
 
                 // update count of term in the whole documents corpus 
@@ -765,7 +782,8 @@ using System.Threading.Tasks;
         public static (Dictionary<string, double> logl, double logp) NBproba_tfidf(
                             Dictionary<string, double> V, Dictionary<string, int> W,
                             List<string> X, List<int> Y, string driver,
-                            bool neg_handle = false)
+                            bool neg_handle = false,
+                            string ngrams = null)
         {
             // Xp contains docs for class analyzed
             List<string> Xp = new List<string>();
@@ -780,7 +798,7 @@ using System.Threading.Tasks;
             Xp = (driver.Equals("positive") ? SelectReviews(X, Y, 1) : SelectReviews(X, Y, 0));
 
             // create a dictionary(key,sum_tfidf) based on docs for class being analyzed 
-            CalculateTfIdf(Xp, W, sum_tfidf, V, neg_handle);
+            CalculateTfIdf(Xp, W, sum_tfidf, V, neg_handle, ngrams);
             //Console.WriteLine(vocab_cat.Count);
 
             // get total count of words in class vocabulary.
@@ -837,7 +855,8 @@ using System.Threading.Tasks;
                                  Dictionary<string, int> stopw,
                                  Dictionary<string, double> calcs,
                                  Dictionary<string, double> V,
-                                 bool neg_handle = false)
+                                 bool neg_handle = false,
+                                 string ngrams = null)
         {
             for (int i = 0; i < docs.Count; i++)
             {
@@ -847,7 +866,7 @@ using System.Threading.Tasks;
                 Dictionary<string, double> tempd2 = new Dictionary<string, double>();
 
                 // tockenize the review
-                ArrayList tokens = new ArrayList();
+                List<string> tokens = new List<string>();
                 string[] tokens_ = SplitWords(docs[i], neg_handle);
                 tokens.AddRange(tokens_);
 
@@ -856,11 +875,13 @@ using System.Threading.Tasks;
 
                 if (neg_handle) { RemovePunctuation(tokens); }
 
+                if(ngrams != null) { CreateNgrams(tokens, ngrams); }
+
                 for (var j = 0; j < tokens.Count; j++)
                 {
                     // update the term frequency dictionary
-                    if (!stopw.ContainsKey(tokens[j].ToString()))
-                    {
+                    //if (!stopw.ContainsKey(tokens[j].ToString()))
+                    //{
                         // add unique tokens to temporary dictionary
                         // calculate term frequency
                         if (!tempd.ContainsKey(tokens[j].ToString()))
@@ -872,7 +893,7 @@ using System.Threading.Tasks;
                             tempd[tokens[j].ToString()] += 1;
                         }
 
-                    }
+                    //}
                 }
 
                 // multiply each term count in current review by corpus idfs
@@ -949,7 +970,8 @@ using System.Threading.Tasks;
                                             List<string> X, List<int> Y,
                                             Dictionary<string, double> loglp, double logpp,
                                             Dictionary<string, double> logln, double logpn,
-                                            bool neg_handle = false)
+                                            bool neg_handle = false,
+                                            string ngrams = null)
         {
             // Y is only used to test the accuracy of the model!
             double accuracy = 0.0;
@@ -967,7 +989,7 @@ using System.Threading.Tasks;
                 string review = X[itest];
                 List<string> creview = new List<string>() { review };
                 // calculate tfidfs
-                CalculateTfIdf(creview, W, vocab_test, V, neg_handle);
+                CalculateTfIdf(creview, W, vocab_test, V, neg_handle, ngrams);
 
                 foreach (var pair in vocab_test)
                 {
@@ -1004,7 +1026,16 @@ using System.Threading.Tasks;
             return accuracy;
         }
 
-        static void CreateNgrams(ArrayList tokens, string ngrams)
+        static void RemoveStopWords(List<string> tokens, Dictionary<string, int> stopw)
+        {
+            foreach (var pair in stopw)
+            {
+                string sword = pair.Key.ToString();
+                tokens.RemoveAll(item => item == sword);
+            }
+        }
+
+        static void CreateNgrams(List<string> tokens, string ngrams)
         {
 
             if (ngrams.Equals("bi"))
@@ -1012,8 +1043,7 @@ using System.Threading.Tasks;
                 // bigrams are  created and added whilst unigrams are removed
                 for (int i = 0; i < tokens.Count-1; i++)
                 {
-                    string bigram = "";
-                    bigram = tokens[i].ToString() + " " + tokens[i + 1].ToString();
+                    string bigram = tokens[i].ToString() + " " + tokens[i + 1].ToString();
                     tokens.RemoveAt(i);
                     tokens.Insert(i, bigram);
                 }
@@ -1023,24 +1053,27 @@ using System.Threading.Tasks;
             else
             {
                 // bigrams are  created and added together with unigrams
+                List<string> bigrams = new List<string>();
                 for (int i = 0; i < tokens.Count - 1; i++)
                 {
                     string bigram = tokens[i].ToString() + " " + tokens[i + 1].ToString();
-                    tokens.RemoveAt(i);
-                    tokens.Insert(i,bigram);
+                    bigrams.Add(bigram);
+                }
+                // Add bigrams to unigrams
+                for (int i = 0; i < bigrams.Count; i++)
+                {
+                    tokens.Add(bigrams[i]);
                 }
             }
         }
 
-        static void RemovePunctuation(ArrayList tokens)
+        static void RemovePunctuation(List<string> tokens)
         {
-            for (int i = 0; i < tokens.Count; i++)
+            string[] punct_list = { ",", ".", "!", "?", ";" };
+
+            foreach(var punct in punct_list)
             {
-                if (tokens[i].ToString() == "," || tokens[i].ToString() == "." &&
-                            tokens[i].ToString() == "!" || tokens[i].ToString() == "?" || tokens[i].ToString() != ";")
-                {
-                    tokens.Remove(tokens[i]);
-                }
+                tokens.RemoveAll(item => item == punct);
             }
         }
             
@@ -1050,7 +1083,7 @@ using System.Threading.Tasks;
         /// "n't, not, never, no" adding the prefix "NOT_" till the first punctuation token.
         /// </summary>
         /// <param name="tokens">String tokens to be modified.</param>
-        static void ModifyTokens(ArrayList tokens)
+        static void ModifyTokens(List<string> tokens)
         {
             for (int i = 0; i < tokens.Count; i++)
             {
