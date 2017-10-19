@@ -39,6 +39,7 @@ def make_corpus():
     for dir in os.listdir("."):
         if dir == "neg":
             neg_reviews = os.path.join(os.getcwd(), dir)
+            print(neg_reviews)
         if dir == "pos":
             pos_reviews = os.path.join(os.getcwd(), dir)
     for file in os.listdir(neg_reviews):
