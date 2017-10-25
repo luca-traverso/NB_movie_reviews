@@ -20,6 +20,9 @@ from sklearn.svm import LinearSVC
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.model_selection import StratifiedKFold
 from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics import confusion_matrix
+import pandas as pd
+import csv
 
 TOTAL_NUM_REVIEWS = 2000
 NUM_NEG_REVIEWS = 1000
@@ -37,9 +40,10 @@ def make_corpus():
     neg_reviews = ""
     pos_reviews = ""
     for dir in os.listdir("."):
+        #print(dir)
         if dir == "neg":
             neg_reviews = os.path.join(os.getcwd(), dir)
-            print(neg_reviews)
+            #print(neg_reviews)
         if dir == "pos":
             pos_reviews = os.path.join(os.getcwd(), dir)
     for file in os.listdir(neg_reviews):
@@ -170,4 +174,93 @@ for train, test in kfold.split(corpus, labels):
     print("\n")
     
     iteration = iteration + 1
+
+# model runs with negation handled
+totalsvm1b = 0           # Accuracy measure on 2000 files
+totalMatSvm1b = np.zeros((2,2));  # Confusion matrix on 2000 files
+totalsvm2b = 0           # Accuracy measure on 2000 files
+totalMatSvm2b = np.zeros((2,2));  # Confusion matrix on 2000 files
+totalsvm3b = 0           # Accuracy measure on 2000 files
+totalMatSvm3b = np.zeros((2,2));  # Confusion matrix on 2000 files
+
+# load stop words dictionary (this is the standard scilit-learn vocabulary
+# augmented by "negative" stopwords)
+file_name = "./vocabularies/scikit_stopw_not" + ".txt"
+vstopw = []
+with open(file_name, 'r') as f:
+    for line in f:
+        vstopw.append(line)
+
+count = 0
+for train_index, test_index in kfold.split(corpus,labels):
+    # initialize new vocabulary for each fold
+    cvocab_large = {}
+    cvocab_red = {}
+    # load existing vocabulary for current fold and
+    # store it into a dictionary
+    file_name_large = "./vocabularies/vocab_large_neg_" + str(count) + ".txt"
+    with open(file_name_large, 'r') as f:
+        for line in csv.reader(f, delimiter=',', skipinitialspace=True):
+            cvocab_large[line[0]] = int(line[1])
+    f.closed
+
+    file_name_red = "./vocabularies/vocab_red_neg_" + str(count) + ".txt"
+    with open(file_name_red, 'r') as f:
+        for line in csv.reader(f, delimiter=',', skipinitialspace=True):
+            cvocab_red[line[0]] = int(line[1])
+    f.closed
+        
+    # define train and test datasets
+    X_train = [corpus[i] for i in train_index]
+    X_test = [corpus[i] for i in test_index]
+    y_train, y_test = labels[train_index], labels[test_index]
     
+    # call vectorizer with loaded vocabulary
+    # SVM case 1b - standard count, large vocabulary, negation handled
+    vectorizer1b = CountVectorizer(vocabulary=cvocab_large, stop_words=vstopw)
+
+    # call vectorizer with loaded vocabulary
+    # SVM case 2b - tf-idf, large vocabulary, negation handled
+    vectorizer2b = TfidfVectorizer(vocabulary=cvocab_large, sublinear_tf=True,
+                                 use_idf=True, stop_words=vstopw)
+
+    # call vectorizer with loaded vocabulary
+    # SVM case 3b - tf-idf, reduced vocabulary, negation handled
+    vectorizer3b = TfidfVectorizer(vocabulary=cvocab_red, sublinear_tf=True,
+                                 use_idf=True, stop_words=vstopw)
+
+    train_corpus1b = vectorizer1b.fit_transform(X_train)
+    test_corpus1b = vectorizer1b.transform(X_test)
+
+    train_corpus_tf_idf2b = vectorizer2b.fit_transform(X_train)
+    test_corpus_tf_idf2b = vectorizer2b.transform(X_test)
+
+    train_corpus_tf_idf3b = vectorizer3b.fit_transform(X_train)
+    test_corpus_tf_idf3b = vectorizer3b.transform(X_test)
+    
+    model1b = LinearSVC()
+    model1b.fit(train_corpus1b,y_train)
+    result1b = model1b.predict(test_corpus1b)
+
+    model2b = LinearSVC()
+    model2b.fit(train_corpus_tf_idf2b,y_train)
+    result2b = model2b.predict(test_corpus_tf_idf2b)
+    
+    model3b = LinearSVC()
+    model3b.fit(train_corpus_tf_idf3b,y_train)
+    result3b = model3b.predict(test_corpus_tf_idf3b)
+    
+    totalMatSvm1b = totalMatSvm1b + confusion_matrix(y_test, result1b)
+    totalsvm1b = totalsvm1b+sum(y_test==result1b)
+    totalMatSvm2b = totalMatSvm2b + confusion_matrix(y_test, result2b)
+    totalsvm2b = totalsvm2b+sum(y_test==result2b)
+    totalMatSvm3b = totalMatSvm3b + confusion_matrix(y_test, result3b)
+    totalsvm3b = totalsvm3b+sum(y_test==result3b)
+    
+    count+=1
+print("results for SVM case 1b (%):")
+print((totalsvm1b/2000.0)*100)
+print("results for SVM case 2b (%):")
+print((totalsvm2b/2000.0)*100)
+print("results for SVM case 3b (%):")
+print((totalsvm3b/2000.0)*100)
